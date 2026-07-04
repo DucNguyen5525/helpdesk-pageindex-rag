@@ -1,0 +1,22 @@
+{
+  "name": "helpdesk-pageindex-rag",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @helpdesk/shared && npm run build --workspace @helpdesk/web",
+    "lint": "npm run lint --workspace @helpdesk/shared && npm run lint --workspace @helpdesk/web",
+    "typecheck": "npm run typecheck --workspace @helpdesk/shared && npm run typecheck --workspace @helpdesk/web",
+    "import:pageindex": "tsx scripts/import-pageindex.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

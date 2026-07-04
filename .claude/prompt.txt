@@ -1,0 +1,336 @@
+You are a senior full-stack engineer. I already have an existing project that was originally created with Vercel, Railway, Dify, Supabase pgvector, and possibly vector-search-related code.
+
+I want you to migrate this project to a lighter vectorless Helpdesk RAG architecture:
+
+TARGET ARCHITECTURE:
+
+* Frontend and main API: Vercel / Next.js
+* Database: MongoDB Atlas
+* File/object storage: Cloudflare R2
+* Optional background worker: Railway
+* Retrieval system: PageIndex-style vectorless hierarchical document index
+* LLM: Gemini Flash API
+* Remove Dify dependency
+* Remove Supabase pgvector dependency
+* Remove vector DB / embedding / pgvector search logic
+* Keep the app focused on Helpdesk Q&A over pre-processed PageIndex JSON/tree data
+
+IMPORTANT CONTEXT:
+All original files will be processed by PageIndex before or outside the chat runtime. The production app should not depend on vector embeddings. The runtime should only read existing PageIndex index data from MongoDB and/or Cloudflare R2, select relevant sections/nodes, send context to Gemini Flash, and return an answer with source references.
+
+Please first inspect the entire repository and identify:
+
+1. Existing frontend structure
+2. Existing backend/API routes
+3. Dify-related code, env vars, SDKs, routes, Docker files, configs, or webhooks
+4. Supabase and pgvector-related code
+5. Any embedding/vector search logic
+6. File upload/storage logic
+7. Existing chat API logic
+8. Current deployment configuration for Vercel and Railway
+
+Then perform the migration carefully.
+
+MIGRATION GOALS:
+
+1. Remove Dify integration
+
+* Remove Dify API calls, Dify client code, Dify environment variables, Dify webhooks, and Dify-specific routes.
+* Remove any Dify Docker Compose/service references if they are not needed.
+* Do not leave dead code or unused packages.
+
+2. Remove Supabase pgvector and vector search
+
+* Remove pgvector schema, embedding tables, vector similarity search, Supabase vector RPC calls, and embedding-generation code.
+* Remove dependencies only if they are no longer used.
+* If Supabase is used for unrelated auth or storage, ask before removing it. If it is only used for pgvector/vector RAG, remove it fully.
+
+3. Add MongoDB data layer
+   Use MongoDB Atlas as the primary database. Create a clean MongoDB connection utility with connection caching suitable for Next.js/Vercel serverless runtime.
+
+Create or update collections/models for:
+
+* documents
+* pageindex_nodes
+* conversations
+* messages
+* feedback
+
+Suggested schema:
+
+documents:
+
+* _id
+* title
+* slug
+* sourceFileUrl
+* indexFileUrl
+* status: "ready" | "processing" | "failed"
+* version
+* tags
+* createdAt
+* updatedAt
+
+pageindex_nodes:
+
+* _id
+* documentId
+* nodeId
+* parentNodeId
+* title
+* summary
+* content
+* path
+* level
+* pageStart
+* pageEnd
+* sourceRef
+* childrenIds
+* createdAt
+* updatedAt
+
+conversations:
+
+* _id
+* userId optional
+* title
+* createdAt
+* updatedAt
+
+messages:
+
+* _id
+* conversationId
+* role: "user" | "assistant" | "system"
+* content
+* sources
+* createdAt
+
+feedback:
+
+* _id
+* messageId
+* rating
+* comment
+* createdAt
+
+4. Add Cloudflare R2 storage layer
+   Use Cloudflare R2 for:
+
+* original files
+* extracted raw text if available
+* full PageIndex JSON backups
+* large index files if they are too large to store directly in MongoDB
+
+Create a reusable R2 client utility using S3-compatible SDK.
+
+Environment variables should include:
+
+* MONGODB_URI
+* MONGODB_DB
+* R2_ACCOUNT_ID
+* R2_ACCESS_KEY_ID
+* R2_SECRET_ACCESS_KEY
+* R2_BUCKET_NAME
+* R2_PUBLIC_BASE_URL optional
+* GEMINI_API_KEY
+* GEMINI_MODEL, default to gemini flash model
+* RAILWAY_WORKER_URL optional, only if needed
+
+5. Implement PageIndex vectorless retrieval
+   Create a retrieval module that does not use embeddings.
+
+The retrieval should work with hierarchical PageIndex nodes:
+
+* Load candidate documents from MongoDB based on status/tags/title
+* Use the PageIndex tree/node structure
+* Select relevant nodes using a lightweight reasoning/ranking process
+* Prefer exact keyword matches, title/path/summary matches, and LLM-based section selection if needed
+* Retrieve a small set of relevant nodes with content and source references
+* Return context blocks with document title, node title, path, page range, and content
+
+Do not call any embedding API.
+Do not use vector similarity.
+Do not use pgvector.
+Do not require a vector database.
+
+6. Implement Gemini Flash answer generation
+   Create or update the chat API route:
+
+* Input: user question, optional conversationId, optional filters/tags
+* Retrieve relevant PageIndex nodes
+* Build a grounded prompt for Gemini Flash
+* Instruct Gemini to answer only from retrieved context
+* If the context is insufficient, say that the available documents do not contain enough information
+* Return answer with sources
+* Save user and assistant messages to MongoDB
+
+Answer format:
+
+* answer: string
+* sources: array of source objects containing documentTitle, nodeTitle, path, pageStart, pageEnd, sourceRef
+
+7. Add admin/import flow for preprocessed PageIndex JSON
+   Create an API route or script to import PageIndex output into MongoDB.
+
+The importer should support:
+
+* Reading a PageIndex JSON file from local path or R2 URL
+* Creating/updating the documents record
+* Flattening tree nodes into pageindex_nodes
+* Preserving parent-child relationships
+* Preserving nodeId, title, summary, content, path, pageStart/pageEnd if available
+* Storing the full raw JSON backup in R2 if needed
+
+Add a script such as:
+
+* scripts/import-pageindex.ts
+
+Usage example:
+npm run import:pageindex -- --file ./data/warranty-index.json --title "Warranty Policy" --slug warranty-policy
+
+8. Railway worker should be optional
+   Railway is only needed for long-running jobs:
+
+* file parsing
+* PageIndex processing
+* batch import
+* scheduled sync
+
+If the project currently has Railway config, refactor it so Railway is an optional worker service, not required for normal chat runtime.
+
+If no long-running worker is needed right now, keep only minimal worker structure or remove unnecessary Railway service code.
+
+9. Update frontend
+   Update the chat UI so it calls the new Next.js API route instead of Dify.
+   Show:
+
+* assistant answer
+* source list
+* document title
+* page range if available
+* path/section title
+
+If there is an upload/admin page, update it to support importing or registering PageIndex JSON, not vector indexing.
+
+10. Update environment examples and documentation
+    Update:
+
+* .env.example
+* README.md
+* deployment notes
+* package scripts
+
+Document:
+
+* How to deploy on Vercel
+* How to configure MongoDB Atlas
+* How to configure Cloudflare R2
+* How to set Gemini API key
+* When Railway is needed
+* How to import PageIndex JSON
+* How to test the chat endpoint
+
+11. Testing and validation
+    Add or update tests where practical:
+
+* MongoDB connection test
+* PageIndex import test
+* Retrieval test using sample nodes
+* Chat API test with mocked Gemini response
+
+Run:
+
+* npm install if needed
+* typecheck
+* lint
+* tests if available
+* build
+
+Fix all errors.
+
+ACCEPTANCE CRITERIA:
+
+* The project no longer depends on Dify for chat.
+* The project no longer uses Supabase pgvector or vector search.
+* The chat API works with PageIndex nodes stored in MongoDB.
+* Gemini Flash generates grounded answers from retrieved PageIndex context.
+* Sources are returned with each answer.
+* Cloudflare R2 is used for file/index backup storage.
+* Railway is optional and only used for long-running background processing.
+* The app can deploy to Vercel for normal chat runtime.
+* README and .env.example are updated.
+* No unused Dify/vector/pgvector code remains unless explicitly documented as legacy and disabled.
+
+Please make the changes in small, logical commits or steps. Before editing, provide a concise migration plan based on the actual repository structure you find. After editing, summarize exactly what files changed, what was removed, what was added, and what still needs manual configuration.
+
+Add a separate PageIndex local ingestion tool.
+
+Do not run PageIndex inside the Vercel/Next.js runtime.
+
+Create a separate worker/tooling folder for PageIndex processing, for example:
+
+workers/pageindex-ingest/
+
+This worker should be responsible for:
+
+1. Cloning or installing the VectifyAI/PageIndex project separately from the Next.js app.
+2. Running PageIndex locally on PDF or Markdown files.
+3. Producing a PageIndex hierarchical JSON tree.
+4. Uploading the full JSON tree backup to Cloudflare R2.
+5. Flattening the tree into MongoDB records.
+6. Updating the documents collection status to "ready".
+7. Logging import results and errors.
+
+The main Next.js app should only:
+
+* read documents and pageindex_nodes from MongoDB
+* optionally read full JSON backup from R2
+* run vectorless retrieval over PageIndex nodes
+* call Gemini Flash
+* return answers with sources
+
+Please create scripts such as:
+
+* workers/pageindex-ingest/run_pageindex_local.py
+* workers/pageindex-ingest/import_pageindex_to_mongo.py
+* workers/pageindex-ingest/flatten_pageindex_tree.py
+* workers/pageindex-ingest/upload_to_r2.py
+* workers/pageindex-ingest/requirements.txt
+* workers/pageindex-ingest/README.md
+
+The ingestion tool should support two modes:
+
+Mode A: Process source file
+python import_pageindex_to_mongo.py 
+--source ./data/warranty.pdf 
+--title "Warranty Policy" 
+--slug warranty-policy 
+--tags helpdesk,warranty
+
+Mode B: Import existing PageIndex JSON
+python import_pageindex_to_mongo.py 
+--index-json ./output/warranty-pageindex.json 
+--title "Warranty Policy" 
+--slug warranty-policy 
+--tags helpdesk,warranty
+
+Environment variables:
+
+* MONGODB_URI
+* MONGODB_DB
+* R2_ACCOUNT_ID
+* R2_ACCESS_KEY_ID
+* R2_SECRET_ACCESS_KEY
+* R2_BUCKET_NAME
+* R2_PUBLIC_BASE_URL optional
+* GEMINI_API_KEY or PAGEINDEX_MODEL_API_KEY depending on PageIndex configuration
+
+Important:
+
+* Do not use embeddings.
+* Do not use pgvector.
+* Do not use vector search.
+* Do not depend on Dify.
+* Keep Railway optional. Railway should only run this ingestion worker if we want cloud processing.
+* The Vercel app must still work even if Railway worker is not deployed.
