@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace @helpdesk/web",
     "build": "npm run build --workspace @helpdesk/shared && npm run build --workspace @helpdesk/web",
     "lint": "npm run lint --workspace @helpdesk/shared && npm run lint --workspace @helpdesk/web",
     "typecheck": "npm run typecheck --workspace @helpdesk/shared && npm run typecheck --workspace @helpdesk/web",

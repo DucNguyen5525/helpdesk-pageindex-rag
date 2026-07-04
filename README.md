@@ -1,35 +1,34 @@
 # Personal Helpdesk PageIndex RAG
 
-Lightweight Helpdesk Q&A app using vectorless PageIndex retrieval. The normal runtime is a Next.js app deployed to Vercel, backed by MongoDB Atlas, Cloudflare R2, and GCLI Proxy (Gemini Key Rotation).
+Lightweight Helpdesk Q&A app using vectorless PageIndex retrieval. The runtime is a Next.js app deployed to Vercel, backed by MongoDB Atlas and Cloudflare R2.
 
-This project no longer requires Dify, Supabase, pgvector, embeddings, vector similarity search, or standard direct Gemini SDK calls.
+This project does not require Dify, Supabase, pgvector, embeddings, or vector similarity search.
 
 ## Architecture
 
 ```text
-apps/web                 Next.js UI and API routes for Vercel
-apps/web/lib/server      MongoDB, R2, GCLI Proxy (Key Rotation), PageIndex retrieval/import runtime
-packages/shared          Shared TypeScript contracts
-scripts/import-pageindex.ts  Local TypeScript importer for existing PageIndex JSON
-workers/pageindex-ingest Optional Railway/local worker for PageIndex processing
+apps/web                    Next.js UI and API routes (Vercel)
+apps/web/lib/server         MongoDB, R2, retrieval/import runtime
+packages/shared             Shared TypeScript contracts
+workers/pageindex-ingest    Python worker for document processing & import
+.claude/skills              AI skill files (hướng dẫn AI agent thao tác dự án)
 ```
 
 Data flow:
 
-1. Source files are processed outside the Vercel runtime by PageIndex tooling.
-2. The PageIndex hierarchical JSON tree is backed up to Cloudflare R2 when requested.
-3. Flattened PageIndex nodes are stored in MongoDB Atlas.
-4. Chat requests use keyword/title/path/summary/content ranking over PageIndex nodes.
-5. Retrieved context is sent to GCLI Proxy (`gemini-3.5-flash` / Gemini models) with Smooth Weighted Round Robin (SWRR) / Weighted Random key rotation and automatic failover retry using a strict grounded-answer prompt.
-6. Answers return source references with document title, section path, page range, and sourceRef.
+1. Source files (PDF/Markdown) are processed by the Python worker into PageIndex JSON.
+2. Flattened PageIndex nodes are stored in MongoDB Atlas.
+3. Chat requests use keyword/title/path/summary/content ranking over PageIndex nodes.
+4. Retrieved context is sent to Gemini with a grounded-answer prompt.
+5. Answers return source references with document title, section path, and page range.
 
 ## Runtime API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/documents` | List imported PageIndex documents |
-| `POST` | `/api/documents/import` | Import PageIndex JSON into MongoDB, optionally backup to R2 |
-| `POST` | `/api/chat` | Ask a question using vectorless PageIndex retrieval |
+| `POST` | `/api/documents/import` | Import PageIndex JSON into MongoDB |
+| `POST` | `/api/chat` | Ask a question using PageIndex retrieval |
 | `POST` | `/api/chat/retrieve` | Debug retrieval results |
 | `GET` | `/api/chat/sessions` | List conversations |
 | `GET` | `/api/chat/sessions/:id/messages` | List messages for one conversation |
@@ -42,7 +41,7 @@ Data flow:
 - `messages`
 - `feedback`
 
-The app creates useful indexes lazily when API/import code touches MongoDB.
+The app creates indexes lazily when API/import code touches MongoDB.
 
 ## Setup
 
@@ -52,68 +51,80 @@ The app creates useful indexes lazily when API/import code touches MongoDB.
 npm install
 ```
 
-If an old `package-lock.json` is present from the previous Supabase/Express MVP, regenerate it after installing dependencies so the lockfile matches the migrated MongoDB/R2 runtime.
-
 ### 2. Configure environment variables
 
-Use `.env.example` as the template. See [ENV_SETUP_GUIDE.md](file:///D:/Dev/3.pjs/helpdesk-Dify/ENV_SETUP_GUIDE.md) for a detailed step-by-step guide to obtaining all API keys and configuration credentials.
-
-```bash
-MONGODB_URI=
-MONGODB_DB=helpdesk_rag
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
-R2_PUBLIC_BASE_URL=
-GCLI_BASE_URL=https://gcli.ggchan.dev/v1
-GCLI_API_KEYS=key1:10,key2:20
-GCLI_MODEL=gemini-3.5-flash
-GCLI_ROTATION_STRATEGY=swrr
-RAILWAY_WORKER_URL=
-```
-
-#### GCLI Key Rotation Options
-
-- `GCLI_BASE_URL`: OpenAI-compatible GCLI Proxy endpoint (default: `https://gcli.ggchan.dev/v1`).
-- `GCLI_API_KEYS`: Comma-separated keys with optional weights (e.g. `key1:10,key2:20` or `key1,key2`). Backward compatible with `GCLI_API_KEY` / `GEMINI_API_KEY`.
-- `GCLI_MODEL`: Targeted Gemini model (e.g. `gemini-3.5-flash`, `gemini-3.1-pro`). Maps to upstream codes automatically.
-- `GCLI_ROTATION_STRATEGY`: `swrr` (Smooth Weighted Round Robin) or `random` (Weighted Random).
+Copy `.env.example` → `.env` and fill in values. See [ENV_SETUP_GUIDE.md](./ENV_SETUP_GUIDE.md) for detailed instructions on obtaining each key.
 
 ### 3. Run locally
 
 ```bash
-npm run dev --workspace @helpdesk/web
+npm run dev
 ```
 
 Open `http://localhost:3000`.
 
-## Import PageIndex JSON
+## Adding Documents
 
-### TypeScript importer
+There are 3 ways to import documents into the system:
+
+### Option A: Admin UI (simplest)
+
+1. Open `http://localhost:3000/admin/documents`
+2. Select a PageIndex JSON file, enter title/slug/tags, and click Import
+
+### Option B: TypeScript CLI
 
 ```bash
 npm run import:pageindex -- --file ./data/warranty-index.json --title "Warranty Policy" --slug warranty-policy --tags helpdesk,warranty
 ```
 
-Add `--backup-to-r2` to store the full JSON backup in Cloudflare R2.
+### Option C: Python Worker (process PDF/Markdown → MongoDB)
 
-### Admin UI importer
-
-Open `/admin/documents`, select a PageIndex JSON file, enter title/slug/tags, and import it. This UI imports existing JSON only; it does not run PageIndex.
-
-### PageIndex worker
-
-Use `workers/pageindex-ingest/` when you need to process source PDFs/Markdown into PageIndex JSON. This can run locally or as an optional Railway worker.
+Use `workers/pageindex-ingest/` to process source PDFs/Markdown into PageIndex JSON and import into MongoDB.
 
 ```bash
+conda activate D:\Dev\conda-envs\py310
 cd workers/pageindex-ingest
 pip install -r requirements.txt
-python import_pageindex_to_mongo.py --source ./data/warranty.pdf --title "Warranty Policy" --slug warranty-policy --tags helpdesk,warranty
-python import_pageindex_to_mongo.py --index-json ./output/warranty-pageindex.json --title "Warranty Policy" --slug warranty-policy --tags helpdesk,warranty
+
+# From existing PageIndex JSON
+python import_pageindex_to_mongo.py --index-json ./data/warranty-pageindex.json --title "Warranty Policy" --slug warranty-policy --tags helpdesk,warranty --skip-r2
+
+# From source PDF (requires VectifyAI/PageIndex installed)
+python import_pageindex_to_mongo.py --source ./data/warranty.pdf --title "Warranty Policy" --slug warranty-policy --tags helpdesk,warranty --skip-r2
 ```
 
-The Next.js runtime does not call this worker.
+> **📘 Full guide**: See [`.claude/skills/pageindex-ingestion.md`](./.claude/skills/pageindex-ingestion.md) for complete documentation including JSON schema, troubleshooting, and examples.
+
+## AI Skill Files
+
+This project includes skill files in `.claude/skills/` that AI coding assistants (Claude, Gemini, etc.) can read to understand how to perform project-specific tasks.
+
+### Available Skills
+
+| File | Purpose |
+| --- | --- |
+| [`pageindex-ingestion.md`](./.claude/skills/pageindex-ingestion.md) | Full guide for document processing & import using the Python worker |
+
+### How to use
+
+When working with an AI assistant on this project, you can prompt it to read the skill file:
+
+```
+Đọc file .claude/skills/pageindex-ingestion.md rồi giúp tôi import tài liệu [tên file] vào MongoDB
+```
+
+Or more specific:
+
+```
+Đọc skill pageindex-ingestion rồi tạo file PageIndex JSON cho tài liệu hướng dẫn sử dụng sản phẩm X, sau đó import vào MongoDB
+```
+
+The AI will:
+1. Read the skill file to understand the full workflow
+2. Prepare the PageIndex JSON (manually or from source file)
+3. Run the Python worker to import into MongoDB
+4. Verify the import result
 
 ## Deploy
 
@@ -121,7 +132,7 @@ The Next.js runtime does not call this worker.
 
 1. Import this repo into Vercel.
 2. Set root directory to `apps/web`.
-3. Set MongoDB, R2, and GCLI Proxy environment variables (`GCLI_BASE_URL`, `GCLI_API_KEYS`, `GCLI_MODEL`, `GCLI_ROTATION_STRATEGY`).
+3. Set environment variables (see `.env.example`).
 4. Deploy with the default Next.js build.
 
 ### MongoDB Atlas
@@ -131,14 +142,13 @@ The Next.js runtime does not call this worker.
 3. Put the connection string in `MONGODB_URI`.
 4. Allow Vercel outbound IP access as appropriate for your Atlas networking mode.
 
-### Cloudflare R2
+### Cloudflare R2 (optional)
 
 1. Create an R2 bucket.
 2. Create access keys.
 3. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME`.
-4. Set `R2_PUBLIC_BASE_URL` only if you expose objects through a public/custom domain.
 
-### Railway
+### Railway (optional)
 
 Railway is optional. Use it only for long-running PageIndex processing or scheduled ingestion jobs. The chat runtime works without Railway.
 
@@ -161,7 +171,3 @@ Manual runtime checks:
 - Retrieval is lexical/PageIndex-structure based, not semantic vector retrieval.
 - PageIndex processing is external to the app runtime.
 - R2 backup is optional for imports.
-
-## Legacy disabled artifacts
-
-`apps/api/` and `supabase/` are disabled legacy artifacts from the previous Express/Supabase pgvector MVP. They are excluded from root workspaces/scripts and should not be deployed or imported. The current runtime is `apps/web`.

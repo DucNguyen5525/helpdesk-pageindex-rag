@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -70,7 +70,11 @@ def import_pageindex_to_mongo(
 
 
 def main() -> None:
-    load_dotenv()
+    root_env = Path(__file__).resolve().parents[2] / ".env"
+    if root_env.exists():
+        load_dotenv(root_env)
+    else:
+        load_dotenv()
     parser = argparse.ArgumentParser(description="Import PageIndex JSON into MongoDB and optionally back it up to R2.")
     parser.add_argument("--source", help="Source PDF/Markdown to process with local PageIndex")
     parser.add_argument("--index-json", help="Existing PageIndex JSON file")

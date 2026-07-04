@@ -1,4 +1,4 @@
-﻿# PageIndex Ingestion Worker
+# PageIndex Ingestion Worker
 
 This folder contains optional tooling for processing source files with VectifyAI/PageIndex outside the Vercel runtime.
 
@@ -28,8 +28,17 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=
 R2_PUBLIC_BASE_URL=
-GEMINI_API_KEY= or PAGEINDEX_MODEL_API_KEY=
+GCLI_BASE_URL=https://gcli.ggchan.dev/v1
+GCLI_API_KEYS=key1:10,key2:20
+GCLI_MODEL=gemini-3-flash-preview
+PAGEINDEX_MODEL=gemini-3-flash-preview
+PAGEINDEX_COMMAND=python -m pageindex --input {source} --output {output}
 ```
+
+## Supported File Formats
+
+- `.pdf`, `.md`, `.txt` — processed directly by PageIndex CLI.
+- `.docx`, `.xlsx`, `.pptx`, `.html`, `.csv` — automatically converted to `.md` via Microsoft MarkItDown before PageIndex processing.
 
 ## Notes
 
