@@ -36,7 +36,7 @@ export function getServerEnv(): ServerEnv {
     mongodbDb: process.env.MONGODB_DB ?? "helpdesk_rag",
     gcliBaseUrl: process.env.GCLI_BASE_URL ?? "https://gcli.ggchan.dev/v1",
     gcliApiKeys,
-    gcliModel: process.env.GCLI_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
+    gcliModel: process.env.GCLI_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3-flash-preview",
     gcliStrategy: process.env.GCLI_ROTATION_STRATEGY ?? "swrr",
     r2AccountId: process.env.R2_ACCOUNT_ID,
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID,

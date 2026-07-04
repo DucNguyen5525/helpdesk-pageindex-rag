@@ -1,5 +1,12 @@
-﻿import { Db, MongoClient } from "mongodb";
+import dns from "node:dns";
+import { Db, MongoClient } from "mongodb";
 import { getServerEnv } from "./env";
+
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch {
+  // Fallback if environment restricts setting DNS servers
+}
 
 declare global {
   var helpdeskMongoClientPromise: Promise<MongoClient> | undefined;
