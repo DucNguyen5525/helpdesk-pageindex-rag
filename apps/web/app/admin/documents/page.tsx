@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import type { HelpdeskDocument } from "@helpdesk/shared";
 import { Database, Upload } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { AdminLayout } from "@/components/AdminLayout";
 import { apiClient, getErrorMessage } from "@/lib/api-client";
 
 export default function DocumentsPage() {
@@ -77,76 +78,78 @@ export default function DocumentsPage() {
   }
 
   return (
-    <section className="p-5 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-ink">Documents</h1>
-        <p className="mt-1 text-sm text-stone-600">Import preprocessed PageIndex JSON into MongoDB.</p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="mb-6 grid gap-4 rounded-md border border-stone-200 bg-white p-5 md:grid-cols-2">
-        <label className="block">
-          <span className="text-sm font-medium text-stone-700">Title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} required className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium text-stone-700">Slug</span>
-          <input value={slug} onChange={(event) => setSlug(event.target.value)} required className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
-        </label>
-        <label className="block md:col-span-2">
-          <span className="text-sm font-medium text-stone-700">Tags</span>
-          <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="helpdesk,warranty" className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
-        </label>
-        <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-mint px-4 py-2 text-sm font-medium text-white">
-            <Upload size={16} aria-hidden="true" />
-            Select JSON
-            <input className="hidden" type="file" accept=".json,application/json" onChange={handleJsonFile} />
-          </label>
-          {fileName ? <span className="text-sm text-stone-600">{fileName}</span> : null}
-          <label className="inline-flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={backupToR2} onChange={(event) => setBackupToR2(event.target.checked)} className="h-4 w-4 accent-mint" />
-            Backup JSON to R2
-          </label>
-          <button type="submit" disabled={isLoading} className="inline-flex items-center gap-2 rounded-md bg-coral px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-            <Database size={16} aria-hidden="true" />
-            Import
-          </button>
+    <AdminLayout>
+      <section className="p-5 md:p-8">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-stone-900">Documents</h1>
+          <p className="mt-1 text-sm text-stone-600">Import preprocessed PageIndex JSON into MongoDB.</p>
         </div>
-      </form>
 
-      {error ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+        <form onSubmit={handleSubmit} className="mb-6 grid gap-4 rounded-xl border border-stone-200 bg-white p-5 md:grid-cols-2 shadow-xs">
+          <label className="block">
+            <span className="text-sm font-medium text-stone-700">Title</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-stone-700">Slug</span>
+            <input value={slug} onChange={(event) => setSlug(event.target.value)} required className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
+          </label>
+          <label className="block md:col-span-2">
+            <span className="text-sm font-medium text-stone-700">Tags</span>
+            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="helpdesk,warranty" className="mt-2 h-10 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-mint" />
+          </label>
+          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-mint px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-mint/90">
+              <Upload size={16} aria-hidden="true" />
+              Select JSON
+              <input className="hidden" type="file" accept=".json,application/json" onChange={handleJsonFile} />
+            </label>
+            {fileName ? <span className="text-sm text-stone-600">{fileName}</span> : null}
+            <label className="inline-flex items-center gap-2 text-sm text-stone-700">
+              <input type="checkbox" checked={backupToR2} onChange={(event) => setBackupToR2(event.target.checked)} className="h-4 w-4 accent-mint" />
+              Backup JSON to R2
+            </label>
+            <button type="submit" disabled={isLoading} className="inline-flex items-center gap-2 rounded-md bg-coral px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-coral/90 disabled:opacity-50">
+              <Database size={16} aria-hidden="true" />
+              Import
+            </button>
+          </div>
+        </form>
 
-      <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-            <tr>
-              <th className="px-4 py-3">Document</th>
-              <th className="px-4 py-3">Tags</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td className="px-4 py-5 text-stone-500" colSpan={4}>Loading documents...</td></tr>
-            ) : documents.length === 0 ? (
-              <tr><td className="px-4 py-5 text-stone-500" colSpan={4}>No PageIndex documents imported yet.</td></tr>
-            ) : (
-              documents.map((document) => (
-                <tr key={document.id} className="border-t border-stone-100">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-stone-800">{document.title}</div>
-                    <div className="text-xs text-stone-500">{document.slug}</div>
-                  </td>
-                  <td className="px-4 py-3 text-stone-600">{document.tags.join(", ") || "-"}</td>
-                  <td className="px-4 py-3"><StatusBadge status={document.status} /></td>
-                  <td className="px-4 py-3 text-stone-600">{new Date(document.updatedAt).toLocaleString()}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+        {error ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+
+        <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xs">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="bg-stone-50 text-xs uppercase text-stone-500">
+              <tr>
+                <th className="px-4 py-3">Document</th>
+                <th className="px-4 py-3">Tags</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td className="px-4 py-5 text-stone-500" colSpan={4}>Loading documents...</td></tr>
+              ) : documents.length === 0 ? (
+                <tr><td className="px-4 py-5 text-stone-500" colSpan={4}>No PageIndex documents imported yet.</td></tr>
+              ) : (
+                documents.map((document) => (
+                  <tr key={document.id} className="border-t border-stone-100 hover:bg-stone-50/50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-stone-800">{document.title}</div>
+                      <div className="text-xs text-stone-500">{document.slug}</div>
+                    </td>
+                    <td className="px-4 py-3 text-stone-600">{document.tags.join(", ") || "-"}</td>
+                    <td className="px-4 py-3"><StatusBadge status={document.status} /></td>
+                    <td className="px-4 py-3 text-stone-600">{new Date(document.updatedAt).toLocaleString()}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </AdminLayout>
   );
 }

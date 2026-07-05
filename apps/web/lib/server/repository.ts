@@ -1,5 +1,5 @@
 import { ObjectId, type Document as MongoDocument } from "mongodb";
-import type { ChatMessage, ChatSession, HelpdeskDocument, PageIndexNode, SourceReference } from "@helpdesk/shared";
+import type { ChatMessage, ChatSession, Helpdesk, HelpdeskDocument, PageIndexNode, SourceReference } from "@helpdesk/shared";
 import { ensureMongoIndexes, getDb } from "./mongodb";
 
 export interface DocumentRecord extends MongoDocument {
@@ -64,6 +64,19 @@ export interface MessageRecord extends MongoDocument {
   createdAt: Date;
 }
 
+export interface HelpdeskRecord extends MongoDocument {
+  _id: ObjectId;
+  name: string;
+  slug: string;
+  description?: string;
+  tags: string[];
+  topK: number;
+  systemPrompt?: string;
+  model?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export function toObjectId(id: string): ObjectId {
   if (!ObjectId.isValid(id)) throw new Error(`Invalid ObjectId: ${id}`);
   return new ObjectId(id);
@@ -122,6 +135,21 @@ export function serializeMessage(record: MessageRecord): ChatMessage {
     content: record.content,
     sources: record.sources ?? [],
     createdAt: record.createdAt.toISOString()
+  };
+}
+
+export function serializeHelpdesk(record: HelpdeskRecord): Helpdesk {
+  return {
+    id: record._id.toString(),
+    name: record.name,
+    slug: record.slug,
+    description: record.description,
+    tags: record.tags ?? [],
+    topK: record.topK ?? 6,
+    systemPrompt: record.systemPrompt,
+    model: record.model,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString()
   };
 }
 
@@ -269,6 +297,59 @@ export async function addMessage(input: {
   const saved = await db.collection<MessageRecord>("messages").findOne({ _id: result.insertedId });
   if (!saved) throw new Error("Failed to save message");
   return serializeMessage(saved);
+}
+
+export async function listHelpdesks(): Promise<Helpdesk[]> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const records = await db.collection<HelpdeskRecord>("helpdesks").find({}).sort({ updatedAt: -1 }).toArray();
+  return records.map(serializeHelpdesk);
+}
+
+export async function getHelpdeskBySlug(slug: string): Promise<Helpdesk | null> {
+  const db = await getDb();
+  const record = await db.collection<HelpdeskRecord>("helpdesks").findOne({ slug });
+  return record ? serializeHelpdesk(record) : null;
+}
+
+export async function createHelpdesk(input: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string }): Promise<Helpdesk> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const now = new Date();
+  const existing = await db.collection<HelpdeskRecord>("helpdesks").findOne({ slug: input.slug });
+  if (existing) throw new Error(`Helpdesk with slug '${input.slug}' already exists`);
+  const result = await db.collection<HelpdeskRecord>("helpdesks").insertOne({
+    _id: new ObjectId(),
+    name: input.name,
+    slug: input.slug,
+    description: input.description,
+    tags: input.tags ?? [],
+    topK: input.topK ?? 6,
+    systemPrompt: input.systemPrompt,
+    model: input.model,
+    createdAt: now,
+    updatedAt: now
+  });
+  const saved = await db.collection<HelpdeskRecord>("helpdesks").findOne({ _id: result.insertedId });
+  if (!saved) throw new Error("Failed to create helpdesk");
+  return serializeHelpdesk(saved);
+}
+
+export async function updateHelpdesk(slug: string, input: { name?: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string }): Promise<Helpdesk | null> {
+  const db = await getDb();
+  const now = new Date();
+  const result = await db.collection<HelpdeskRecord>("helpdesks").findOneAndUpdate(
+    { slug },
+    { $set: { ...input, updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  return result ? serializeHelpdesk(result as unknown as HelpdeskRecord) : null;
+}
+
+export async function deleteHelpdesk(slug: string): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.collection<HelpdeskRecord>("helpdesks").deleteOne({ slug });
+  return result.deletedCount > 0;
 }
 
 function escapeRegex(value: string) {

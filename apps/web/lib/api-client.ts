@@ -1,4 +1,4 @@
-﻿import type { ChatMessage, ChatResponse, ChatSession, HelpdeskDocument, RetrievalResponseItem } from "@helpdesk/shared";
+import type { ChatMessage, ChatResponse, ChatSession, Helpdesk, HelpdeskDocument, RetrievalResponseItem } from "@helpdesk/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -53,7 +53,7 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  ask: (body: { question: string; conversationId?: string; tags?: string[]; topK?: number }) =>
+  ask: (body: { question: string; conversationId?: string; tags?: string[]; topK?: number; helpdeskSlug?: string }) =>
     request<ChatResponse>("/api/chat", {
       method: "POST",
       body: JSON.stringify(body)
@@ -65,5 +65,25 @@ export const apiClient = {
     }),
   listSessions: () => request<{ data: ChatSession[] }>("/api/chat/sessions"),
   listMessages: (conversationId: string) =>
-    request<{ data: ChatMessage[] }>(`/api/chat/sessions/${conversationId}/messages`)
+    request<{ data: ChatMessage[] }>(`/api/chat/sessions/${conversationId}/messages`),
+
+  // Auth
+  login: (body: { username: string; password: string; rememberMe?: boolean }) =>
+    request<{ ok: boolean }>("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  logout: () =>
+    request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+  checkAuth: () =>
+    request<{ authenticated: boolean }>("/api/auth/check"),
+
+  // Helpdesks
+  listHelpdesks: () =>
+    request<{ data: Helpdesk[] }>("/api/helpdesks"),
+  createHelpdesk: (body: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string }) =>
+    request<{ data: Helpdesk }>("/api/helpdesks", { method: "POST", body: JSON.stringify(body) }),
+  getHelpdesk: (slug: string) =>
+    request<{ data: Helpdesk }>(`/api/helpdesks/${slug}`),
+  updateHelpdesk: (slug: string, body: Record<string, unknown>) =>
+    request<{ data: Helpdesk }>(`/api/helpdesks/${slug}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteHelpdesk: (slug: string) =>
+    request<void>(`/api/helpdesks/${slug}`, { method: "DELETE" }),
 };

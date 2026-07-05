@@ -1,4 +1,4 @@
-﻿export type DocumentStatus = "ready" | "processing" | "failed";
+export type DocumentStatus = "ready" | "processing" | "failed";
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface HelpdeskDocument {
@@ -71,4 +71,17 @@ export interface ChatResponse {
 export interface RetrievalResponseItem extends SourceReference {
   content: string;
   summary?: string;
+}
+
+export interface Helpdesk {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  tags: string[];
+  topK: number;
+  systemPrompt?: string;
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
 }

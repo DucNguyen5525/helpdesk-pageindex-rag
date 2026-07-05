@@ -75,6 +75,61 @@ File `.env` đặt tại **root dự án** (`D:\Dev\3.pjs\helpdesk-Dify\.env`). 
 
 > (*) Chỉ bắt buộc khi muốn backup file lên R2. Nếu không cần, dùng flag `--skip-r2`.
 
+## Bước 0: Xác nhận loại Helpdesk trước khi xử lý
+
+> **BẮT BUỘC**: Trước khi thực hiện bất kỳ thao tác import nào, agent PHẢI xác nhận loại helpdesk mà tài liệu sẽ được gán vào.
+
+### Quy trình xác nhận
+
+1. **Nếu người dùng đã chỉ rõ loại helpdesk** (ví dụ: "import vào helpdesk bảo hành", hoặc cung cấp `--tags` rõ ràng) → **Bỏ qua bước này**, tiến hành import trực tiếp.
+
+2. **Nếu người dùng KHÔNG chỉ rõ loại helpdesk** → Agent PHẢI:
+
+   a. Truy vấn danh sách các helpdesk đang tồn tại trong hệ thống bằng cách gọi API:
+   ```bash
+   curl http://localhost:3000/api/helpdesks
+   ```
+   Hoặc truy vấn trực tiếp MongoDB collection `helpdesks`.
+
+   b. Hiển thị danh sách cho người dùng dưới dạng bảng:
+   ```
+   Hiện tại hệ thống có các loại Helpdesk sau:
+
+   | # | Tên Helpdesk           | Slug                | Tags               |
+   |---|------------------------|---------------------|---------------------|
+   | 1 | Bảo hành sản phẩm     | bao-hanh            | helpdesk,warranty   |
+   | 2 | Hướng dẫn kỹ thuật    | huong-dan-ky-thuat  | helpdesk,technical  |
+   | 3 | Chính sách công ty    | chinh-sach          | policy,internal     |
+
+   Bạn muốn import tài liệu này vào helpdesk nào? (Nhập số thứ tự hoặc tên)
+   Hoặc bạn có muốn tạo một helpdesk mới không?
+   ```
+
+   c. Chờ người dùng xác nhận trước khi tiếp tục.
+
+   d. Sau khi xác nhận, sử dụng `tags` của helpdesk đã chọn làm giá trị `--tags` cho lệnh import.
+
+3. **Nếu chưa có helpdesk nào trong hệ thống** → Thông báo cho người dùng và hỏi:
+   - Tên helpdesk mới cần tạo
+   - Mô tả ngắn (tùy chọn)
+   - Tags phân loại
+
+   Sau đó tạo helpdesk mới qua API trước khi tiến hành import.
+
+### Ví dụ tương tác
+
+```
+Người dùng: Import file warranty-policy.pdf vào hệ thống
+Agent: Bạn chưa chỉ rõ loại helpdesk. Để tôi kiểm tra danh sách helpdesk hiện có...
+       [Truy vấn API /api/helpdesks]
+       Hiện tại có 2 helpdesk:
+       1. Bảo hành sản phẩm (bao-hanh) — tags: helpdesk,warranty
+       2. Hướng dẫn kỹ thuật (huong-dan-ky-thuat) — tags: helpdesk,technical
+       Bạn muốn import vào helpdesk nào?
+Người dùng: 1
+Agent: Đã xác nhận. Tiến hành import vào helpdesk "Bảo hành sản phẩm" với tags: helpdesk,warranty...
+```
+
 ---
 
 ## Cách sử dụng

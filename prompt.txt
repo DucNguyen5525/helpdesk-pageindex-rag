@@ -1,0 +1,1 @@
+﻿Hãy áp dụng theo ví dụ D:\Dev\4.libs\gcli-proxy\examples\key_rotation_example.py thay vì gemini truyền thống.

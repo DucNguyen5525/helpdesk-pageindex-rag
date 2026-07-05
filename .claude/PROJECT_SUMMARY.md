@@ -1,7 +1,7 @@
 # Project Summary
 
-**Last Updated:** 2026-07-05 00:42:38 +07:00  
-**Session:** #12 - Updated Project Summary Timestamp and Session Details
+**Last Updated:** 2026-07-05 08:22:40 +07:00  
+**Session:** #16 - Scope Auth Middleware to Dashboard Only (Chat & other routes remain public)
 
 ---
 
@@ -12,7 +12,7 @@
 - **Package Manager:** npm workspaces.
 - **i18n:** None. Gemini prompt answers in Vietnamese by default.
 - **State Management:** React local state plus browser local storage for retrieval settings.
-- **Styling:** Tailwind CSS with compact admin/chat UI.
+- **Styling:** Tailwind CSS with McKay Wrigley Chatbot UI design patterns.
 - **Deployment:** Vercel for `apps/web`; optional Railway only for `workers/pageindex-ingest` long-running ingestion.
 
 ---
@@ -23,17 +23,19 @@
 
 ```text
 apps/web/                         Next.js UI and API runtime
-apps/web/app/api/                 Next.js API routes for chat, retrieval, documents, sessions
-apps/web/lib/server/              MongoDB, R2, GCLI/Gemini, PageIndex import/retrieval modules
-apps/web/app/chat/                Main chatbot UI
+apps/web/app/login/               Auth login page (LittleKai / Duc365bmt)
+apps/web/app/dashboard/           Helpdesk management dashboard UI
+apps/web/app/chat/[helpdeskSlug]/ Helpdesk-scoped Chat UI
+apps/web/app/api/auth/            Auth API routes (login, logout, check)
+apps/web/app/api/helpdesks/       Helpdesk CRUD API routes
+apps/web/lib/server/              MongoDB, R2, GCLI/Gemini, Auth, PageIndex import/retrieval modules
+apps/web/components/chat/         Chatbot UI components (Sidebar, InputBar, MessageItem, Header, EmptyState)
 apps/web/app/admin/documents/     PageIndex JSON import and document list UI
 apps/web/app/admin/debug/         Vectorless retrieval debug UI
 apps/web/app/settings/            Retrieval topK/tag settings UI
 packages/shared/                  Shared TypeScript contracts
 scripts/import-pageindex.ts       Local TS importer for existing PageIndex JSON
 workers/pageindex-ingest/         Optional Python worker/tooling for PageIndex processing
-apps/api/                         Disabled legacy Express/Supabase API; not in workspaces
-supabase/                         Disabled legacy pgvector migration; not in workspaces
 ```
 
 ### Critical Files
@@ -41,15 +43,14 @@ supabase/                         Disabled legacy pgvector migration; not in wor
 | File | Purpose | Notes |
 | --- | --- | --- |
 | `package.json` | Root workspace scripts | Builds shared and web only. |
-| `.env.example` | MongoDB/R2/GCLI env template | GCLI_BASE_URL, GCLI_API_KEYS, GCLI_MODEL, GCLI_ROTATION_STRATEGY. |
-| `README.md` | Human setup and deployment guide | Documents Vercel/MongoDB/R2/PageIndex flow. |
-| `LEGACY_DISABLED.md` | Legacy cleanup note | Explains locked old `apps/api` and `supabase`. |
-| `apps/web/lib/server/mongodb.ts` | MongoDB connection cache | Suitable for Next.js/Vercel serverless runtime. |
-| `apps/web/lib/server/repository.ts` | MongoDB collections/repository | Documents, nodes, conversations, messages. |
-| `apps/web/lib/server/retrieval.ts` | PageIndex vectorless retrieval | Keyword/title/path/summary/content scoring; no embeddings. |
-| `apps/web/lib/server/gemini.ts` | GCLI Key Rotation & grounded answer generation | Supports SWRR / Weighted Random, failover retry, model mapping. |
-| `apps/web/lib/server/pageindex-importer.ts` | PageIndex JSON import orchestration | Optional R2 backup, Mongo upsert. |
-| `workers/pageindex-ingest/import_pageindex_to_mongo.py` | Optional worker import entrypoint | Supports source-file processing or existing JSON import. |
+| `.env.example` | MongoDB/R2/GCLI/Auth env template | AUTH_USERNAME, AUTH_PASSWORD, AUTH_SECRET. |
+| `apps/web/middleware.ts` | Next.js Edge Auth Middleware | Protects all routes except `/login` and `/api/auth/*`. |
+| `apps/web/lib/server/auth.ts` | Server Auth module | Signed HMAC-SHA256 session cookie validation. |
+| `apps/web/lib/server/repository.ts` | MongoDB repository | Documents, nodes, conversations, messages, helpdesks. |
+| `apps/web/app/login/page.tsx` | Login UI | Authenticates `LittleKai` / `Duc365bmt`. |
+| `apps/web/app/dashboard/page.tsx` | Dashboard UI | List, create, and manage isolated helpdesks. |
+| `apps/web/app/chat/[helpdeskSlug]/page.tsx` | Scoped Chatbot UI | Helpdesk-specific chat with custom tags, topK, and systemPrompt. |
+| `.claude/skills/pageindex-ingestion.md` | PageIndex Ingestion Skill | Added Step 0 for helpdesk type confirmation before upload. |
 
 ---
 
@@ -65,7 +66,7 @@ State remains page-local. Retrieval settings store `topK` and comma-separated ta
 
 ### Styling Approach
 
-Tailwind utility classes directly in TSX. UI remains operational/admin-focused.
+Tailwind utility classes directly in TSX. UI follows McKay Wrigley Chatbot UI design standards.
 
 ### API Integration
 
@@ -73,19 +74,19 @@ Frontend calls same-origin Next API routes through `apps/web/lib/api-client.ts`.
 
 ### Routing
 
-Next.js provides both UI routes and runtime API routes:
-
 ```text
-/chat
-/admin/documents
-/admin/debug
-/settings
-/api/chat
-/api/chat/retrieve
-/api/chat/sessions
-/api/chat/sessions/[id]/messages
-/api/documents
-/api/documents/import
+/login                          Login page
+/dashboard                      Dashboard (List/Create helpdesks)
+/chat/[helpdeskSlug]            Dynamic chat route per helpdesk
+/admin/documents                Document import UI
+/admin/debug                    Vectorless retrieval debug
+/settings                       Global retrieval defaults
+/api/auth/login                 Login API
+/api/auth/logout                Logout API
+/api/auth/check                 Auth check API
+/api/helpdesks                  Helpdesk list/create API
+/api/helpdesks/[slug]           Helpdesk get/update/delete API
+/api/chat                       Chat Q&A API (supports helpdeskSlug)
 ```
 
 ### Backend Layers
@@ -98,7 +99,11 @@ Runtime server logic is under `apps/web/lib/server/`. API route handlers parse/v
 
 | Feature | Status | Files Involved | Notes |
 | --- | --- | --- | --- |
-| Next.js runtime consolidation | Completed | `package.json`, `apps/web/app/api/*` | Main API now deploys with Vercel. |
+| Next.js runtime consolidation | Completed | `package.json`, `apps/web/app/api/*` | Main API deploys with Vercel. |
+| Authentication System | Completed | `apps/web/middleware.ts`, `auth.ts`, `/login` | Cookie-based auth for `LittleKai` / `Duc365bmt`. |
+| Multi-Helpdesk System | Completed | `/dashboard`, `/chat/[helpdeskSlug]`, `/api/helpdesks` | Isolated helpdesks with custom tags, topK, systemPrompt. |
+| Chatbot UI Upgrade (McKay Wrigley) | Completed | `apps/web/app/chat/[helpdeskSlug]/page.tsx`, `components/chat/*` | Session history sidebar, prompt starters, markdown formatting, PageIndex citations drawer. |
+| PageIndex Ingestion Skill Update | Completed | `.claude/skills/pageindex-ingestion.md` | Step 0 added for helpdesk selection prompt before upload. |
 | Dify removal | Completed | Full repo scan | No Dify code/env/routes found in current source. |
 | Supabase/pgvector removal from runtime | Completed | `package.json`, `.env.example`, `README.md`, `LEGACY_DISABLED.md` | Old dirs remain OS-locked but disabled and ignored. |
 | MongoDB data layer | Completed | `mongodb.ts`, `repository.ts` | Connection caching and collection indexes. |

@@ -257,7 +257,7 @@ function getResilientClient(): { client: ResilientGCLIClient; model: string } {
   return { client: clientInstance, model: env.gcliModel };
 }
 
-export async function generateGroundedAnswer(question: string, retrievedNodes: RetrievedNode[]) {
+export async function generateGroundedAnswer(question: string, retrievedNodes: RetrievedNode[], systemPrompt?: string) {
   if (retrievedNodes.length === 0) {
     return "Tôi chưa tìm thấy đủ thông tin trong tài liệu hiện có để trả lời câu hỏi này.";
   }
@@ -265,7 +265,9 @@ export async function generateGroundedAnswer(question: string, retrievedNodes: R
   const { client, model } = getResilientClient();
   const context = buildContextBlock(retrievedNodes);
 
-  const prompt = `You are a precise helpdesk assistant. Answer the user's question using only the PageIndex context below.
+  const systemPreamble = systemPrompt ? `${systemPrompt}\n\n` : "";
+
+  const prompt = `${systemPreamble}You are a precise helpdesk assistant. Answer the user's question using only the PageIndex context below.
 
 Rules:
 - Do not use outside knowledge.
@@ -294,4 +296,5 @@ ${question}`;
 
   return result.content.trim();
 }
+
 
