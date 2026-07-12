@@ -12,12 +12,13 @@ interface ChatMessageItemProps {
   sources?: SourceReference[];
   messageId?: string;
   feedback?: MessageFeedback | null;
+  isStreaming?: boolean;
   onFeedback?: (messageId: string, feedback: MessageFeedback | null) => void;
 }
 
-export function ChatMessageItem({ role, content, sources, messageId, feedback, onFeedback }: ChatMessageItemProps) {
+export function ChatMessageItem({ role, content, sources, messageId, feedback, isStreaming, onFeedback }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
-  const [showSources, setShowSources] = useState(true);
+  const [showSources, setShowSources] = useState(false);
 
   async function handleCopy() {
     try {
@@ -94,7 +95,7 @@ export function ChatMessageItem({ role, content, sources, messageId, feedback, o
             <div className="text-sm leading-relaxed text-stone-800">
               <div className="whitespace-pre-wrap font-sans break-words">{content}</div>
             </div>
-          ) : (
+          ) : content ? (
             <div className="prose prose-sm prose-stone max-w-none break-words prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:rounded-lg prose-pre:bg-stone-800 prose-code:before:content-none prose-code:after:content-none prose-table:my-3 prose-th:bg-stone-100 prose-th:px-2.5 prose-th:py-1.5 prose-td:px-2.5 prose-td:py-1.5 prose-a:text-mint">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -120,6 +121,13 @@ export function ChatMessageItem({ role, content, sources, messageId, feedback, o
                 {content}
               </ReactMarkdown>
             </div>
+          ) : isStreaming ? (
+            <div className="flex items-center gap-2 text-sm text-stone-500">
+              <span className="h-2 w-2 animate-ping rounded-full bg-mint" />
+              <span>Đang soạn câu trả lời...</span>
+            </div>
+          ) : (
+            <div className="text-sm text-stone-400">Chưa có nội dung trả lời.</div>
           )}
 
           {/* Sources Section */}

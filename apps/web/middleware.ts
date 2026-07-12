@@ -3,8 +3,24 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE_NAME = "helpdesk_session";
 
 function isProtectedPath(pathname: string, method: string): boolean {
-  // Only protect the /dashboard page
-  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+  if (
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname === "/admin/debug" ||
+    pathname.startsWith("/admin/debug/") ||
+    pathname === "/admin/documents" ||
+    pathname.startsWith("/admin/documents/")
+  ) {
+    return true;
+  }
+
+  if (
+    pathname.startsWith("/api/documents") ||
+    pathname === "/api/chat/debug" ||
+    pathname === "/api/chat/retrieve"
+  ) {
     return true;
   }
 

@@ -142,7 +142,9 @@ export async function POST(request: Request) {
     return new Response(stream, {
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Cache-Control": "no-cache"
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
       }
     });
   } catch (error) {

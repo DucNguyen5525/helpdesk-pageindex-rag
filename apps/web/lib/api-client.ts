@@ -95,6 +95,7 @@ export const apiClient = {
       buffer = lines.pop() ?? "";
       lines.forEach(emitLine);
     }
+    buffer += decoder.decode();
     emitLine(buffer);
   },
   setMessageFeedback: (messageId: string, feedback: MessageFeedback | null) =>

@@ -19,6 +19,7 @@ interface UiMessage {
   content: string;
   sources?: SourceReference[];
   feedback?: MessageFeedback | null;
+  isStreaming?: boolean;
 }
 
 export default function HelpdeskChatPage() {
@@ -170,6 +171,8 @@ export default function HelpdeskChatPage() {
 
     try {
       let streamConversationId: string | undefined;
+      let streamSources: SourceReference[] = [];
+      let streamDone = false;
 
       // Updates the assistant message currently being streamed (always the last one)
       const patchLastAssistant = (patch: Partial<UiMessage> | ((last: UiMessage) => Partial<UiMessage>)) => {
@@ -194,22 +197,34 @@ export default function HelpdeskChatPage() {
         (event) => {
           if (event.type === "meta") {
             streamConversationId = event.conversationId;
-            setMessages((current) => [...current, { role: "assistant", content: "", sources: event.sources }]);
+            streamSources = event.sources;
+            setMessages((current) => [...current, { role: "assistant", content: "", isStreaming: true }]);
           } else if (event.type === "delta") {
             patchLastAssistant((last) => ({ content: last.content + event.text }));
           } else if (event.type === "done") {
-            patchLastAssistant({ id: event.messageId });
+            streamDone = true;
+            patchLastAssistant({ id: event.messageId, sources: streamSources, isStreaming: false });
           } else if (event.type === "error") {
+            patchLastAssistant({ isStreaming: false });
             setError(event.message);
           }
         }
       );
+
+      if (!streamDone) {
+        patchLastAssistant({ sources: streamSources, isStreaming: false });
+      }
 
       if (!activeSessionId && streamConversationId) {
         setActiveSessionId(streamConversationId);
         await fetchSessions();
       }
     } catch (err) {
+      setMessages((current) => {
+        const last = current[current.length - 1];
+        if (!last || last.role !== "assistant" || !last.isStreaming) return current;
+        return [...current.slice(0, -1), { ...last, isStreaming: false }];
+      });
       setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
@@ -224,11 +239,6 @@ export default function HelpdeskChatPage() {
     } catch (err) {
       setError(getErrorMessage(err));
     }
-  }
-
-  // Handle prompt starter selection
-  function handleSelectPrompt(promptText: string) {
-    setQuestion(promptText);
   }
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
@@ -310,7 +320,6 @@ export default function HelpdeskChatPage() {
         <div className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
             <ChatEmptyState
-              onSelectPrompt={handleSelectPrompt}
               helpdeskName={helpdesk.name}
               helpdeskDescription={helpdesk.description}
             />
@@ -324,6 +333,7 @@ export default function HelpdeskChatPage() {
                   sources={msg.sources}
                   messageId={msg.id}
                   feedback={msg.feedback}
+                  isStreaming={msg.isStreaming}
                   onFeedback={msg.role === "assistant" ? handleFeedback : undefined}
                 />
               ))}

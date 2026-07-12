@@ -3,6 +3,7 @@
 import { Bug, FileText, MessageSquare, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BrandIcon } from "@/components/BrandIcon";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
@@ -19,7 +20,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <aside className="border-b border-stone-200 bg-white lg:min-h-screen lg:border-b-0 lg:border-r">
         <div className="flex h-14 items-center border-b border-stone-200 px-5 font-semibold text-stone-800">
           <Link href="/chat" className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-mint text-xs font-bold text-white">HD</span>
+            <BrandIcon className="h-6 w-6" />
             <span>Helpdesk Admin</span>
           </Link>
         </div>

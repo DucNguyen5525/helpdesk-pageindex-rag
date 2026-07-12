@@ -1,10 +1,11 @@
 "use client";
 
 import type { ChatSession } from "@helpdesk/shared";
-import { Plus, Search, MessageSquare, FileText, Bug, Settings, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Search, MessageSquare, Bug, Settings, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { BrandIcon } from "@/components/BrandIcon";
 
 interface ChatSidebarProps {
   sessions: ChatSession[];
@@ -42,9 +43,7 @@ export function ChatSidebar({
       <div className="flex h-14 items-center justify-between border-b border-stone-800 px-3">
         {!collapsed ? (
           <div className="flex items-center gap-2 font-semibold text-white">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-mint text-white text-xs font-bold">
-              HD
-            </div>
+            <BrandIcon />
             <span className="text-sm tracking-wide">Helpdesk RAG</span>
           </div>
         ) : null}
@@ -142,7 +141,6 @@ export function ChatSidebar({
       {/* Bottom Nav Links */}
       <div className="border-t border-stone-800 p-2 space-y-1">
         {[
-          { href: "/admin/documents", label: "Documents", icon: FileText },
           { href: "/admin/debug", label: "Debug", icon: Bug },
           { href: "/settings", label: "Settings", icon: Settings }
         ].map((item) => {

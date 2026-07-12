@@ -5,18 +5,16 @@ import {
   Plus,
   MessageSquare,
   Pencil,
-  Sparkles,
-  FileText,
-  Bug,
-  Settings,
   LogOut,
   X,
   Hash,
   Layers,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { BrandIcon } from "@/components/BrandIcon";
 import { apiClient, getErrorMessage } from "@/lib/api-client";
 
 function slugify(text: string): string {
@@ -63,6 +61,8 @@ export default function DashboardPage() {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [form, setForm] = useState<HelpdeskFormData>(defaultForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingDeleteSlug, setPendingDeleteSlug] = useState<string | null>(null);
+  const [isDeletingHelpdesk, setIsDeletingHelpdesk] = useState(false);
   const [error, setError] = useState<string>();
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
@@ -98,6 +98,26 @@ export default function DashboardPage() {
     setShowCreateForm(false);
     setEditingSlug(null);
     setError(undefined);
+  }
+
+  function handleRequestDelete(slug: string) {
+    setPendingDeleteSlug(slug);
+    setError(undefined);
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDeleteSlug || isDeletingHelpdesk) return;
+    setIsDeletingHelpdesk(true);
+    setError(undefined);
+    try {
+      await apiClient.deleteHelpdesk(pendingDeleteSlug);
+      setHelpdesks((current) => current.filter((helpdesk) => helpdesk.slug !== pendingDeleteSlug));
+      setPendingDeleteSlug(null);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsDeletingHelpdesk(false);
+    }
   }
 
   async function fetchHelpdesks() {
@@ -215,9 +235,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-6">
             {/* Branding */}
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-mint text-xs font-bold text-white">
-                HD
-              </div>
+              <BrandIcon />
               <span className="text-sm font-bold tracking-wide text-stone-800">
                 Helpdesk RAG
               </span>
@@ -293,8 +311,8 @@ export default function DashboardPage() {
         {/* Empty State */}
         {!isLoadingList && helpdesks.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-mint/10 text-mint">
-              <Sparkles size={32} />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-mint/10">
+              <BrandIcon className="h-12 w-12" />
             </div>
             <h2 className="text-lg font-bold text-stone-800">
               Chưa có helpdesk nào
@@ -370,6 +388,13 @@ export default function DashboardPage() {
                   >
                     <Pencil size={14} />
                     Sửa
+                  </button>
+                  <button
+                    onClick={() => handleRequestDelete(hd.slug)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 text-stone-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                    title="Xóa helpdesk"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>
@@ -619,6 +644,40 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {pendingDeleteSlug ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl">
+            <h2 className="text-base font-bold text-stone-900">Xóa helpdesk?</h2>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              Helpdesk &ldquo;{helpdesks.find((helpdesk) => helpdesk.slug === pendingDeleteSlug)?.name ?? pendingDeleteSlug}&rdquo; sẽ bị xóa khỏi dashboard. Tài liệu đã import không bị xóa.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteSlug(null)}
+                disabled={isDeletingHelpdesk}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeletingHelpdesk}
+                className="flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isDeletingHelpdesk ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                <span>{isDeletingHelpdesk ? "Đang xóa..." : "Xóa helpdesk"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

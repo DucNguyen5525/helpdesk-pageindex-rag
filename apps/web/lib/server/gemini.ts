@@ -410,28 +410,41 @@ async function* parseSseContentDeltas(body: ReadableStream<Uint8Array>): AsyncGe
   const decoder = new TextDecoder();
   let buffer = "";
 
+  function parseLine(line: string) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return { done: false, delta: "" };
+    const payload = trimmed.slice(5).trim();
+    if (payload === "[DONE]") return { done: true, delta: "" };
+    try {
+      const json = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> };
+      return { done: false, delta: json.choices?.[0]?.delta?.content ?? json.choices?.[0]?.message?.content ?? "" };
+    } catch {
+      return { done: false, delta: "" };
+    }
+  }
+
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === "[DONE]") return;
-        try {
-          const json = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> };
-          const delta = json.choices?.[0]?.delta?.content ?? json.choices?.[0]?.message?.content ?? "";
-          if (delta) yield delta;
-        } catch {
-          // skip malformed SSE chunks
-        }
+        const parsed = parseLine(line);
+        if (parsed.done) return;
+        if (parsed.delta) yield parsed.delta;
       }
+    }
+
+    if (buffer.trim()) {
+      const parsed = parseLine(buffer);
+      if (parsed.delta) yield parsed.delta;
     }
   } finally {
     reader.releaseLock();
