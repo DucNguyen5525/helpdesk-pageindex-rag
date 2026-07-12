@@ -1,6 +1,6 @@
 "use client";
 
-import type { Helpdesk } from "@helpdesk/shared";
+import type { Helpdesk, HelpdeskDocument } from "@helpdesk/shared";
 import {
   Plus,
   MessageSquare,
@@ -39,6 +39,7 @@ interface HelpdeskFormData {
   systemPrompt: string;
   retrievalMode: "pageindex" | "amg";
   datasetSlug: string;
+  documentSlugs: string[];
 }
 
 const defaultForm: HelpdeskFormData = {
@@ -50,11 +51,13 @@ const defaultForm: HelpdeskFormData = {
   systemPrompt: "",
   retrievalMode: "pageindex",
   datasetSlug: "",
+  documentSlugs: [],
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const [helpdesks, setHelpdesks] = useState<Helpdesk[]>([]);
+  const [documents, setDocuments] = useState<HelpdeskDocument[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export default function DashboardPage() {
       systemPrompt: hd.systemPrompt ?? "",
       retrievalMode: hd.retrievalMode ?? "pageindex",
       datasetSlug: hd.datasetSlug ?? "",
+      documentSlugs: hd.documentSlugs ?? [],
     });
     setSlugManuallyEdited(true);
     setError(undefined);
@@ -110,7 +114,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchHelpdesks();
+    apiClient
+      .listDocuments()
+      .then((res) => setDocuments(res.data))
+      .catch(() => {
+        // document checkboxes are hidden when the list cannot be loaded
+      });
   }, []);
+
+  function toggleDocumentSlug(slug: string) {
+    setForm((prev) => ({
+      ...prev,
+      documentSlugs: prev.documentSlugs.includes(slug)
+        ? prev.documentSlugs.filter((s) => s !== slug)
+        : [...prev.documentSlugs, slug],
+    }));
+  }
 
   function handleNameChange(name: string) {
     setForm((prev) => ({
@@ -140,6 +159,7 @@ export default function DashboardPage() {
 
       const datasetSlug =
         form.retrievalMode === "amg" ? form.datasetSlug.trim() || undefined : undefined;
+      const documentSlugs = form.retrievalMode === "pageindex" ? form.documentSlugs : [];
 
       if (isEditing && editingSlug) {
         await apiClient.updateHelpdesk(editingSlug, {
@@ -150,6 +170,7 @@ export default function DashboardPage() {
           systemPrompt: form.systemPrompt.trim() || undefined,
           retrievalMode: form.retrievalMode,
           datasetSlug,
+          documentSlugs,
         });
       } else {
         await apiClient.createHelpdesk({
@@ -161,6 +182,7 @@ export default function DashboardPage() {
           systemPrompt: form.systemPrompt.trim() || undefined,
           retrievalMode: form.retrievalMode,
           datasetSlug,
+          documentSlugs: documentSlugs.length > 0 ? documentSlugs : undefined,
         });
       }
 
@@ -207,6 +229,7 @@ export default function DashboardPage() {
                 { href: "/dashboard", label: "Dashboard" },
                 { href: "/admin/documents", label: "Documents" },
                 { href: "/admin/debug", label: "Debug" },
+                { href: "/predict/shock-baseline", label: "Dự đoán" },
                 { href: "/settings", label: "Cài đặt" },
               ].map((item) => (
                 <Link
@@ -511,6 +534,37 @@ export default function DashboardPage() {
                   <option value="amg">AMG (dữ liệu bảng)</option>
                 </select>
               </div>
+
+              {/* Document selection — only for PageIndex mode */}
+              {form.retrievalMode === "pageindex" && documents.length > 0 && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-stone-700">
+                    Tài liệu dùng cho chat
+                  </label>
+                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-stone-200 p-2">
+                    {documents.map((doc) => (
+                      <label
+                        key={doc.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-stone-700 transition-colors hover:bg-stone-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.documentSlugs.includes(doc.slug)}
+                          onChange={() => toggleDocumentSlug(doc.slug)}
+                          className="h-4 w-4 accent-mint"
+                        />
+                        <span className="flex-1 truncate">{doc.title}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-stone-400">{doc.slug}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[11px] text-stone-400">
+                    {form.documentSlugs.length > 0
+                      ? `Chat chỉ tìm trong ${form.documentSlugs.length} tài liệu đã chọn.`
+                      : "Không chọn tài liệu nào: chat sẽ tìm theo tags (hoặc toàn bộ nếu không có tags)."}
+                  </p>
+                </div>
+              )}
 
               {/* Dataset slug — only for AMG mode */}
               {form.retrievalMode === "amg" && (

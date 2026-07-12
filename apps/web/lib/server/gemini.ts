@@ -304,6 +304,7 @@ Rules:
 - Answer in Vietnamese by default.
 - Keep the answer clear, direct, and helpful.
 - Include source references using document title and section/path when possible.
+- If the context contains markdown image references (like ![...](/doc-images/...)) that directly illustrate a step or issue in your answer, include those exact markdown image tags inline at the relevant step. Copy image URLs exactly as-is; never invent or modify image URLs.
 
 Response format:
 Answer:

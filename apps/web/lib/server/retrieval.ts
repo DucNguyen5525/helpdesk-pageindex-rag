@@ -4,6 +4,7 @@ import { getNodesForDocuments, listReadyDocuments, type DocumentRecord, type Pag
 export interface RetrievePageIndexInput {
   query: string;
   tags?: string[];
+  documentSlugs?: string[];
   topK?: number;
 }
 
@@ -15,16 +16,25 @@ export interface RetrievedNode {
 
 export async function retrievePageIndexNodes(input: RetrievePageIndexInput): Promise<RetrievedNode[]> {
   const topK = Math.min(Math.max(input.topK ?? 6, 1), 12);
-  const documents = await listReadyDocuments({ tags: input.tags });
+  const documents = await listReadyDocuments({ tags: input.tags, slugs: input.documentSlugs });
   if (documents.length === 0) return [];
 
   const nodes = await getNodesForDocuments(documents.map((doc) => doc._id));
   const documentById = new Map(documents.map((doc) => [doc._id.toString(), doc]));
+
+  const fields = nodes.map((node) => ({
+    title: normalize(node.title),
+    path: normalize((node.path ?? []).join(" ")),
+    summary: normalize(node.summary ?? ""),
+    content: normalize(node.content ?? "")
+  }));
+  const idf = buildIdf(tokenize(input.query), fields);
+
   const scored = nodes
-    .map((node) => ({
+    .map((node, index) => ({
       node,
       document: documentById.get(node.documentId.toString()),
-      score: scoreNode(input.query, node)
+      score: scoreNode(input.query, fields[index], node.level, idf)
     }))
     .filter((item): item is RetrievedNode => Boolean(item.document) && item.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -44,8 +54,21 @@ export function toSourceReference(item: RetrievedNode): SourceReference {
     pageEnd: item.node.pageEnd,
     sourceRef: item.node.sourceRef,
     preview: item.node.content.slice(0, 260),
-    score: item.score
+    score: item.score,
+    images: extractImageUrls(item.node.content)
   };
+}
+
+const MAX_SOURCE_IMAGES = 6;
+
+function extractImageUrls(content: string): string[] | undefined {
+  const urls: string[] = [];
+  const pattern = /!\[[^\]]*\]\((\/[^)\s]+\.(?:webp|png|jpe?g|gif))\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null && urls.length < MAX_SOURCE_IMAGES) {
+    if (!urls.includes(match[1])) urls.push(match[1]);
+  }
+  return urls.length > 0 ? urls : undefined;
 }
 
 export function toRetrievalResponseItem(item: RetrievedNode): RetrievalResponseItem {
@@ -74,42 +97,57 @@ export function buildContextBlock(items: RetrievedNode[]) {
     .join("\n\n---\n\n");
 }
 
-function scoreNode(query: string, node: PageIndexNodeRecord) {
+interface NodeFields {
+  title: string;
+  path: string;
+  summary: string;
+  content: string;
+}
+
+// IDF over the candidate nodes so rare query terms (e.g. "ket toan", "hoan tien")
+// outweigh generic ones ("tien", "the") that diacritic-stripped Vietnamese produces everywhere.
+function buildIdf(terms: string[], fields: NodeFields[]): Map<string, number> {
+  const idf = new Map<string, number>();
+  for (const term of terms) {
+    let df = 0;
+    for (const field of fields) {
+      if (field.title.includes(term) || field.path.includes(term) || field.summary.includes(term) || field.content.includes(term)) {
+        df += 1;
+      }
+    }
+    idf.set(term, Math.log(1 + fields.length / (1 + df)));
+  }
+  return idf;
+}
+
+function scoreNode(query: string, fields: NodeFields, level: number, idf: Map<string, number>) {
   const terms = tokenize(query);
   if (terms.length === 0) return 0;
 
-  const title = normalize(node.title);
-  const path = normalize((node.path ?? []).join(" "));
-  const summary = normalize(node.summary ?? "");
-  const content = normalize(node.content ?? "");
+  const { title, path, summary, content } = fields;
   let score = 0;
-  let matchedTerms = 0;
+  let matchedIdf = 0;
+  let totalIdf = 0;
 
   for (const term of terms) {
-    let matched = false;
-    if (title.includes(term)) {
-      score += 8;
-      matched = true;
-    }
+    const weight = idf.get(term) ?? 1;
+    totalIdf += weight;
+    let termScore = 0;
+    if (title.includes(term)) termScore += 8;
     // path already repeats the node title, so keep its weight below title
-    if (path.includes(term)) {
-      score += 4;
-      matched = true;
-    }
-    if (summary.includes(term)) {
-      score += 4;
-      matched = true;
-    }
+    if (path.includes(term)) termScore += 4;
+    if (summary.includes(term)) termScore += 4;
     const occurrences = countOccurrences(content, term);
-    if (occurrences > 0) {
-      score += Math.min(occurrences, 3) * 2;
-      matched = true;
+    if (occurrences > 0) termScore += Math.min(occurrences, 3) * 2;
+
+    if (termScore > 0) {
+      score += termScore * weight;
+      matchedIdf += weight;
     }
-    if (matched) matchedTerms += 1;
   }
 
-  // reward nodes covering most query terms so content-rich matches beat generic title hits
-  score += (matchedTerms / terms.length) * 15;
+  // reward nodes covering the informative part of the query, not just its generic terms
+  if (totalIdf > 0) score += (matchedIdf / totalIdf) * 15;
 
   const phrase = normalize(query);
   if (phrase.length > 4) {
@@ -118,7 +156,7 @@ function scoreNode(query: string, node: PageIndexNodeRecord) {
     if (content.includes(phrase)) score += 5;
   }
 
-  if (node.level <= 1) score += 0.5;
+  if (level <= 1) score += 0.5;
   return score;
 }
 

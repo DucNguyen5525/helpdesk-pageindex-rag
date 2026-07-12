@@ -75,6 +75,7 @@ export interface HelpdeskRecord extends MongoDocument {
   model?: string;
   retrievalMode?: RetrievalMode;
   datasetSlug?: string;
+  documentSlugs?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -171,6 +172,7 @@ export function serializeHelpdesk(record: HelpdeskRecord): Helpdesk {
     model: record.model,
     retrievalMode: record.retrievalMode ?? "pageindex",
     datasetSlug: record.datasetSlug,
+    documentSlugs: record.documentSlugs,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString()
   };
@@ -194,11 +196,16 @@ export async function listDocuments(): Promise<HelpdeskDocument[]> {
   return docs.map(serializeDocument);
 }
 
-export async function listReadyDocuments(filters?: { tags?: string[]; title?: string }) {
+export async function listReadyDocuments(filters?: { tags?: string[]; title?: string; slugs?: string[] }) {
   await ensureMongoIndexes();
   const db = await getDb();
   const query: Record<string, unknown> = { status: "ready" };
-  if (filters?.tags?.length) query.tags = { $all: filters.tags };
+  // explicit document selection wins over tag matching
+  if (filters?.slugs?.length) {
+    query.slug = { $in: filters.slugs };
+  } else if (filters?.tags?.length) {
+    query.tags = { $all: filters.tags };
+  }
   if (filters?.title) query.title = { $regex: escapeRegex(filters.title), $options: "i" };
   return db.collection<DocumentRecord>("documents").find(query).sort({ updatedAt: -1 }).limit(20).toArray();
 }
@@ -300,6 +307,14 @@ export async function listConversations() {
   return records.map(serializeConversation);
 }
 
+export async function deleteConversation(conversationId: string) {
+  const db = await getDb();
+  const id = toObjectId(conversationId);
+  await db.collection<MessageRecord>("messages").deleteMany({ conversationId: id });
+  const result = await db.collection<ConversationRecord>("conversations").deleteOne({ _id: id });
+  return result.deletedCount > 0;
+}
+
 export async function listMessages(conversationId: string) {
   const db = await getDb();
   const records = await db
@@ -346,7 +361,7 @@ export async function getHelpdeskBySlug(slug: string): Promise<Helpdesk | null> 
   return record ? serializeHelpdesk(record) : null;
 }
 
-export async function createHelpdesk(input: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string }): Promise<Helpdesk> {
+export async function createHelpdesk(input: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }): Promise<Helpdesk> {
   await ensureMongoIndexes();
   const db = await getDb();
   const now = new Date();
@@ -363,6 +378,7 @@ export async function createHelpdesk(input: { name: string; slug: string; descri
     model: input.model,
     retrievalMode: input.retrievalMode ?? "pageindex",
     datasetSlug: input.datasetSlug,
+    documentSlugs: input.documentSlugs,
     createdAt: now,
     updatedAt: now
   });
@@ -371,7 +387,7 @@ export async function createHelpdesk(input: { name: string; slug: string; descri
   return serializeHelpdesk(saved);
 }
 
-export async function updateHelpdesk(slug: string, input: { name?: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string }): Promise<Helpdesk | null> {
+export async function updateHelpdesk(slug: string, input: { name?: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }): Promise<Helpdesk | null> {
   const db = await getDb();
   const now = new Date();
   const result = await db.collection<HelpdeskRecord>("helpdesks").findOneAndUpdate(
@@ -386,6 +402,31 @@ export async function deleteHelpdesk(slug: string): Promise<boolean> {
   const db = await getDb();
   const result = await db.collection<HelpdeskRecord>("helpdesks").deleteOne({ slug });
   return result.deletedCount > 0;
+}
+
+export interface PredictionModelRecord extends MongoDocument {
+  _id: ObjectId;
+  slug: string;
+  artifact: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function upsertPredictionModel(slug: string, artifact: Record<string, unknown>): Promise<void> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const now = new Date();
+  await db.collection<PredictionModelRecord>("prediction_models").updateOne(
+    { slug },
+    { $set: { slug, artifact, updatedAt: now }, $setOnInsert: { createdAt: now } },
+    { upsert: true }
+  );
+}
+
+export async function getPredictionModel(slug: string): Promise<Record<string, unknown> | null> {
+  const db = await getDb();
+  const record = await db.collection<PredictionModelRecord>("prediction_models").findOne({ slug });
+  return record?.artifact ?? null;
 }
 
 export async function listDatasets(): Promise<DatasetInfo[]> {

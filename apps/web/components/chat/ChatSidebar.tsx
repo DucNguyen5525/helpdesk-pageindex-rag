@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChatSession } from "@helpdesk/shared";
-import { Plus, Search, MessageSquare, FileText, Bug, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, MessageSquare, FileText, Bug, Settings, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,7 @@ interface ChatSidebarProps {
   sessions: ChatSession[];
   activeSessionId?: string;
   onSelectSession: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
   onNewChat: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -19,6 +20,7 @@ export function ChatSidebar({
   sessions,
   activeSessionId,
   onSelectSession,
+  onDeleteSession,
   onNewChat,
   collapsed,
   onToggleCollapse
@@ -102,10 +104,15 @@ export function ChatSidebar({
           filteredSessions.map((session) => {
             const isActive = session.id === activeSessionId;
             return (
-              <button
+              <div
                 key={session.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectSession(session.id)}
-                className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onSelectSession(session.id);
+                }}
+                className={`group flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
                   isActive
                     ? "bg-stone-800 font-medium text-white"
                     : "text-stone-400 hover:bg-stone-800/60 hover:text-stone-200"
@@ -114,7 +121,19 @@ export function ChatSidebar({
               >
                 <MessageSquare size={15} className={`shrink-0 ${isActive ? "text-mint" : "text-stone-500"}`} />
                 {!collapsed ? <span className="truncate flex-1">{session.title}</span> : null}
-              </button>
+                {!collapsed && onDeleteSession ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSession(session.id);
+                    }}
+                    className="shrink-0 rounded p-1 text-stone-500 opacity-0 transition-opacity hover:bg-stone-700 hover:text-rose-400 group-hover:opacity-100 focus:opacity-100"
+                    title="Xóa đoạn chat"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                ) : null}
+              </div>
             );
           })
         )}

@@ -156,7 +156,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="mt-6 text-center text-xs text-stone-500">
-          PageIndex Vectorless RAG · Helpdesk System
+          Helpdesk System
         </p>
       </div>
     </div>

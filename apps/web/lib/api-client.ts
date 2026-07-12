@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatResponse, ChatSession, Helpdesk, HelpdeskDocument, ModelsInfo, RetrievalMode, RetrievalResponseItem } from "@helpdesk/shared";
+import type { ChatMessage, ChatResponse, ChatSession, Helpdesk, HelpdeskDocument, ImportSuggestion, ModelsInfo, PredictionModelInfo, PredictionResult, RetrievalMode, RetrievalResponseItem } from "@helpdesk/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -59,14 +59,25 @@ export const apiClient = {
       body: JSON.stringify(body)
     }),
   listModels: () => request<{ data: ModelsInfo }>("/api/models"),
+  analyzeImport: (body: { indexJson: unknown }) =>
+    request<{ data: ImportSuggestion }>("/api/documents/analyze", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   retrieve: (body: { query: string; tags?: string[]; topK?: number }) =>
     request<{ data: RetrievalResponseItem[] }>("/api/chat/retrieve", {
       method: "POST",
       body: JSON.stringify(body)
     }),
+  getPredictionModel: (slug: string) =>
+    request<{ data: PredictionModelInfo }>(`/api/predict?model=${encodeURIComponent(slug)}`),
+  predict: (body: { modelSlug?: string; features: Record<string, string | number | null> }) =>
+    request<{ data: PredictionResult }>("/api/predict", { method: "POST", body: JSON.stringify(body) }),
   listSessions: () => request<{ data: ChatSession[] }>("/api/chat/sessions"),
   listMessages: (conversationId: string) =>
     request<{ data: ChatMessage[] }>(`/api/chat/sessions/${conversationId}/messages`),
+  deleteSession: (conversationId: string) =>
+    request<void>(`/api/chat/sessions/${conversationId}`, { method: "DELETE" }),
 
   // Auth
   login: (body: { username: string; password: string; rememberMe?: boolean }) =>
@@ -79,7 +90,7 @@ export const apiClient = {
   // Helpdesks
   listHelpdesks: () =>
     request<{ data: Helpdesk[] }>("/api/helpdesks"),
-  createHelpdesk: (body: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string }) =>
+  createHelpdesk: (body: { name: string; slug: string; description?: string; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }) =>
     request<{ data: Helpdesk }>("/api/helpdesks", { method: "POST", body: JSON.stringify(body) }),
   getHelpdesk: (slug: string) =>
     request<{ data: Helpdesk }>(`/api/helpdesks/${slug}`),

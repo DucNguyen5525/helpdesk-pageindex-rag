@@ -12,9 +12,11 @@
     "lint": "npm run lint --workspace @helpdesk/shared && npm run lint --workspace @helpdesk/web",
     "typecheck": "npm run typecheck --workspace @helpdesk/shared && npm run typecheck --workspace @helpdesk/web",
     "import:pageindex": "tsx scripts/import-pageindex.ts",
-    "import:dataset": "tsx scripts/import-dataset.ts"
+    "import:dataset": "tsx scripts/import-dataset.ts",
+    "train:shock": "tsx scripts/train-shock-model.ts"
   },
   "devDependencies": {
+    "sharp": "^0.35.3",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",
     "xlsx": "^0.18.5"

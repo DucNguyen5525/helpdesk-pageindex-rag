@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, Loader2, Sliders } from "lucide-react";
+import { Send, Loader2, Sparkles } from "lucide-react";
 import { FormEvent, KeyboardEvent, useRef, useEffect } from "react";
 
 interface ChatInputBarProps {
@@ -8,8 +8,9 @@ interface ChatInputBarProps {
   setQuestion: (val: string) => void;
   onSubmit: (e: FormEvent) => void;
   isLoading: boolean;
-  topK?: number;
-  tags?: string;
+  models?: string[];
+  selectedModel?: string;
+  onSelectModel?: (model: string) => void;
 }
 
 export function ChatInputBar({
@@ -17,8 +18,9 @@ export function ChatInputBar({
   setQuestion,
   onSubmit,
   isLoading,
-  topK,
-  tags
+  models,
+  selectedModel,
+  onSelectModel
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -41,6 +43,26 @@ export function ChatInputBar({
   return (
     <div className="border-t border-stone-200/80 bg-white/80 p-4 backdrop-blur-md">
       <div className="mx-auto max-w-4xl space-y-2">
+        {models && models.length > 0 && onSelectModel ? (
+          <div className="flex items-center px-1">
+            <label className="flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+              <Sparkles size={12} className="text-emerald-600" />
+              <select
+                value={selectedModel}
+                onChange={(event) => onSelectModel(event.target.value)}
+                className="cursor-pointer bg-transparent text-[11px] font-medium text-emerald-700 outline-none"
+                title="Chọn model AI trả lời"
+              >
+                {models.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
+
         <form onSubmit={onSubmit} className="relative flex items-end rounded-xl border border-stone-300 bg-white shadow-xs focus-within:border-mint focus-within:ring-2 focus-within:ring-mint/20">
           <textarea
             ref={textareaRef}
@@ -63,15 +85,8 @@ export function ChatInputBar({
           </button>
         </form>
 
-        <div className="flex items-center justify-between text-[11px] text-stone-400 px-1">
-          <div className="flex items-center gap-2">
-            <Sliders size={12} className="text-stone-400" />
-            <span>TopK: {topK ?? 10}</span>
-            <span>·</span>
-            <span>Tags: {tags || "All"}</span>
-          </div>
-
-          <span className="hidden sm:inline">PageIndex Vectorless RAG · Antigravity AI</span>
+        <div className="px-1 text-center text-[11px] text-stone-400">
+          Trợ lý có thể sai sót — hãy kiểm tra lại thông tin quan trọng trong tài liệu gốc.
         </div>
       </div>
     </div>

@@ -44,6 +44,7 @@ export interface SourceReference {
   sourceRef?: string;
   preview?: string;
   score?: number;
+  images?: string[];
 }
 
 export interface ChatMessage {
@@ -74,6 +75,15 @@ export interface ModelsInfo {
   defaultModel: string;
 }
 
+export interface ImportSuggestion {
+  action: "new" | "update";
+  matchedSlug?: string;
+  title: string;
+  slug: string;
+  tags: string[];
+  reason: string;
+}
+
 export interface RetrievalResponseItem extends SourceReference {
   content: string;
   summary?: string;
@@ -90,6 +100,7 @@ export interface Helpdesk {
   model?: string;
   retrievalMode: RetrievalMode;
   datasetSlug?: string;
+  documentSlugs?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -109,4 +120,29 @@ export interface DatasetInfo {
   source: string;
   rowCount: number;
   columns: DatasetColumn[];
+}
+
+export interface PredictionModelInfo {
+  slug: string;
+  title: string;
+  target: string;
+  positiveClass: string;
+  datasetSlug: string;
+  inputFeatures: Array<{ name: string; label: string; type: "number" | "category"; categories?: string[] }>;
+  metrics: { auroc: number; n: number; positives: number; threshold: number };
+}
+
+export interface PredictionContribution {
+  feature: string;
+  impact: number;
+}
+
+export interface PredictionResult {
+  probability: number;
+  riskLabel: "thấp" | "trung bình" | "cao";
+  aboveThreshold: boolean;
+  threshold: number;
+  contributions: PredictionContribution[];
+  modelSlug: string;
+  disclaimer: string;
 }

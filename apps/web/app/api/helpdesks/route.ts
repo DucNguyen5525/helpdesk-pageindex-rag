@@ -13,7 +13,8 @@ const createHelpdeskSchema = z.object({
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
   retrievalMode: z.enum(["pageindex", "amg"]).optional(),
-  datasetSlug: z.string().optional()
+  datasetSlug: z.string().optional(),
+  documentSlugs: z.array(z.string()).optional()
 });
 
 export async function GET() {

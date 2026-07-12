@@ -1,7 +1,7 @@
 "use client";
 
-import type { HelpdeskDocument } from "@helpdesk/shared";
-import { Database, Upload } from "lucide-react";
+import type { HelpdeskDocument, ImportSuggestion } from "@helpdesk/shared";
+import { Database, Sparkles, Upload } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -17,6 +17,8 @@ export default function DocumentsPage() {
   const [backupToR2, setBackupToR2] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [suggestion, setSuggestion] = useState<ImportSuggestion>();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   async function loadDocuments() {
     setIsLoading(true);
@@ -39,12 +41,31 @@ export default function DocumentsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
     setError(undefined);
+    setSuggestion(undefined);
     setFileName(file.name);
+
+    let parsed: unknown;
     try {
-      setIndexJson(JSON.parse(await file.text()));
+      parsed = JSON.parse(await file.text());
     } catch {
       setIndexJson(undefined);
       setError("The selected file is not valid JSON.");
+      return;
+    }
+    setIndexJson(parsed);
+
+    // AI proposes new-vs-update + metadata; the human reviews and confirms via Import
+    setIsAnalyzing(true);
+    try {
+      const res = await apiClient.analyzeImport({ indexJson: parsed });
+      setSuggestion(res.data);
+      setTitle(res.data.title);
+      setSlug(res.data.slug);
+      setTags(res.data.tags.join(", "));
+    } catch {
+      // analysis is best-effort; the form can still be filled manually
+    } finally {
+      setIsAnalyzing(false);
     }
   }
 
@@ -70,6 +91,7 @@ export default function DocumentsPage() {
       setTags("");
       setFileName("");
       setIndexJson(undefined);
+      setSuggestion(undefined);
       await loadDocuments();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -84,6 +106,29 @@ export default function DocumentsPage() {
           <h1 className="text-xl font-semibold text-stone-900">Documents</h1>
           <p className="mt-1 text-sm text-stone-600">Import preprocessed PageIndex JSON into MongoDB.</p>
         </div>
+
+        {isAnalyzing ? (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <div className="h-2 w-2 animate-ping rounded-full bg-emerald-500" />
+            AI đang phân tích tài liệu để đề xuất cách nhập...
+          </div>
+        ) : null}
+
+        {suggestion ? (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <Sparkles size={14} />
+              Đề xuất của AI —{" "}
+              {suggestion.action === "update"
+                ? `CẬP NHẬT tài liệu đã có "${suggestion.matchedSlug}"`
+                : "TẠO TÀI LIỆU MỚI"}
+            </div>
+            {suggestion.reason ? <p className="mt-1 text-emerald-700">{suggestion.reason}</p> : null}
+            <p className="mt-1 text-xs text-emerald-600">
+              Các trường bên dưới đã được điền sẵn theo đề xuất. Kiểm tra/chỉnh sửa rồi nhấn Import để xác nhận.
+            </p>
+          </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="mb-6 grid gap-4 rounded-xl border border-stone-200 bg-white p-5 md:grid-cols-2 shadow-xs">
           <label className="block">

@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     let retrievalMode: RetrievalMode = input.retrievalMode ?? "pageindex";
     let datasetSlug: string | undefined;
     let model = input.model;
+    let documentSlugs: string[] | undefined;
 
     if (input.helpdeskSlug) {
       const helpdesk = await getHelpdeskBySlug(input.helpdeskSlug);
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
         retrievalMode = input.retrievalMode ?? helpdesk.retrievalMode ?? "pageindex";
         datasetSlug = helpdesk.datasetSlug ?? input.helpdeskSlug;
         model = input.model ?? helpdesk.model;
+        documentSlugs = helpdesk.documentSlugs?.length ? helpdesk.documentSlugs : undefined;
       }
     }
 
@@ -63,7 +65,7 @@ export async function POST(request: Request) {
       answer = result.answer;
       sources = result.sources;
     } else {
-      const retrieved = await retrievePageIndexNodes({ query: input.question, tags, topK });
+      const retrieved = await retrievePageIndexNodes({ query: input.question, tags, documentSlugs, topK });
       answer = await generateGroundedAnswer(input.question, retrieved, systemPrompt, model);
       sources = retrieved.map(toSourceReference);
     }

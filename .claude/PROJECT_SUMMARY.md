@@ -33,6 +33,9 @@ apps/web/lib/server/tabular-qa.ts AMG-mode: LLM schema-linking + deterministic s
 scripts/import-dataset.ts         Local importer for CSV/XLS clinical datasets (datasets/dataset_rows)
 scripts/extract-md-images.ts      Extracts base64 images from Google-Docs-exported MD into files + path refs
 scripts/md-to-pageindex.ts        Converts cleaned MD (heading tree + large-table row chunks) to PageIndex JSON
+scripts/generate-node-summaries.ts Gemini Vietnamese summaries per node (batched, idempotent) into pageindex JSON
+scripts/process-doc-images.ts     Enhance (normalize+sharpen) images → WebP into apps/web/public/doc-images + rewrite JSON refs
+apps/web/public/doc-images/       Published WebP images per document slug (served statically)
 .data/Docs/                       Source documents (Tech Support Manual in md/pdf/txt/html; same content)
 docs/                             Research notes + tabular-QA plan (research-amg-tabular-qa.md, plan-tabular-qa-v1.md)
 apps/web/components/chat/         Chatbot UI components (Sidebar, InputBar, MessageItem, Header, EmptyState)
@@ -93,6 +96,8 @@ Frontend calls same-origin Next API routes through `apps/web/lib/api-client.ts`.
 /api/helpdesks                  Helpdesk list/create API
 /api/helpdesks/[slug]           Helpdesk get/update/delete API
 /api/chat                       Chat Q&A API (supports helpdeskSlug, model)
+/api/chat/sessions/[id]         DELETE: remove conversation + its messages
+/api/documents/analyze          POST: AI suggests import action (new/update, slug, tags)
 /api/models                     Available AI models list (GCLI_MODELS + default)
 ```
 
@@ -115,9 +120,17 @@ Runtime server logic is under `apps/web/lib/server/`. API route handlers parse/v
 | Supabase/pgvector removal from runtime | Completed | `package.json`, `.env.example`, `README.md`, `LEGACY_DISABLED.md` | Old dirs remain OS-locked but disabled and ignored. |
 | MongoDB data layer | Completed | `mongodb.ts`, `repository.ts` | Connection caching and collection indexes. |
 | Cloudflare R2 layer | Completed | `r2.ts`, importer modules | Used for optional PageIndex JSON backup. |
-| PageIndex vectorless retrieval | Completed | `retrieval.ts` | Lexical score over title/path/summary/content; no embeddings. Scoring counts content term frequency (capped) + query-term coverage bonus so content-rich nodes beat generic title hits. |
+| PageIndex vectorless retrieval | Completed | `retrieval.ts` | Lexical score over title/path/summary/content; no embeddings. Scoring: content term frequency (capped) + IDF weighting over candidate nodes (rare terms beat generic diacritic-stripped Vietnamese tokens) + IDF-weighted coverage bonus. |
+| Vietnamese node summaries | Completed | `scripts/generate-node-summaries.ts` | Gemini (PAGEINDEX_MODEL) writes 1-2 câu tiếng Việt (giữ thuật ngữ Anh) per node into pageindex JSON, batched + idempotent (rerun fills failures); 140/142 tech-support nodes summarized + re-imported. Realistic mixed-language queries now rank target node #1; fully paraphrased VN queries remain a lexical limitation. |
+| Markdown answer rendering | Completed | `ChatMessageItem.tsx`, `tailwind.config.ts` | Assistant messages render via react-markdown + remark-gfm with @tailwindcss/typography prose styles; tables wrapped in overflow-x-auto; user messages stay plain text. |
+| User-facing UI cleanup | Completed | `ChatHeader/InputBar/MessageItem/EmptyState`, chat page, login page | Tech jargon (PageIndex RAG badge, TopK/Tags row, "Vectorless RAG · Antigravity AI") hidden from chat + login; citations panel renamed "Nguồn tham khảo"; admin/dashboard pages keep technical info. Model dropdown moved from header to above the chat input box. |
+| Per-helpdesk document selection | Completed | shared `Helpdesk.documentSlugs`, `repository.ts`, `retrieval.ts`, `/api/chat`, helpdesk routes, dashboard modal | Dashboard create/edit dialog shows checkbox list of imported documents (pageindex mode); explicit `documentSlugs` scoping wins over tags in `listReadyDocuments`; empty selection falls back to tag matching. |
+| AI-assisted import (human confirm) | Completed | `import-analyzer.ts`, `POST /api/documents/analyze`, admin documents page | On JSON file select, Gemini compares candidate title+section titles against existing documents and proposes action (new vs update+matchedSlug), title, slug, tags with Vietnamese reason; form is prefilled, human edits and confirms via Import. Verified: same manual → "update tech-support-manual"; marketing doc → "new, tags [marketing]". |
+| Images in chat answers | Completed | `scripts/process-doc-images.ts`, `retrieval.ts` (images in SourceReference), `gemini.ts` prompt, `ChatMessageItem.tsx`, `apps/web/public/doc-images/` | sharp: normalize + sharpen + WebP q82 (29.3MB→7.5MB, 561 files); JSON refs rewritten to `/doc-images/<slug>/*.webp` then re-imported; citations show clickable thumbnails; LLM inlines exact image tags when a step is illustrated. `sharp` is a root devDependency (script-only). |
+| Delete chat session | Completed | `repository.ts` (deleteConversation), `DELETE /api/chat/sessions/[id]`, `api-client.ts`, `ChatSidebar.tsx`, chat page | Trash icon per sidebar session (hover) + header "Xóa chat" for active session → custom confirmation modal → deletes conversation + messages from MongoDB. Header button on an unsaved chat just resets the view. Browser-verified incl. reload. |
 | Per-request AI model selection | Completed | `env.ts`, `gemini.ts`, `/api/models`, `/api/chat`, `ChatHeader.tsx`, chat page, `settings.ts` | `GCLI_MODELS` env lists allowed models; chat header dropdown lets user pick (saved in local storage); priority request model → helpdesk.model → `GCLI_MODEL` default; invalid model silently falls back to default. |
-| Tabular-QA retrieval mode (`amg`) | Completed | `tabular-qa.ts`, `/api/chat`, `import-dataset.ts`, dashboard/settings UI | LLM plans query → code computes count/proportion/mean/median/min/max/groupBy/correlation over `dataset_rows`; numbers computed in TS (not LLM). Per-helpdesk `retrievalMode` + `datasetSlug`. Ingest of dengue CSV/XLS is user-run. |
+| Tabular-QA retrieval mode (`amg`) | Completed | `tabular-qa.ts`, `/api/chat`, `import-dataset.ts`, dashboard/settings UI | LLM plans query → code computes count/proportion (categorical equals OR numeric threshold via compare/value)/mean/median/min/max/groupBy/correlation over `dataset_rows`; numbers computed in TS (not LLM). Per-helpdesk `retrievalMode` + `datasetSlug`. Ingest of dengue CSV/XLS is user-run. |
+| Shock-risk prediction | Completed | `prediction.ts`, `scripts/train-shock-model.ts`, `/api/predict`, `/predict/[modelSlug]`, repository `prediction_models` | TS logistic regression on paper1 `dengue-baseline` enrolment features (no leakage); 5-fold CV AUROC 0.787; artifact stored in Mongo; `/api/predict` GET model info + POST case→probability + top contributions; `/predict/shock-baseline` case-input form (public route). Research tool only, not clinical. Train via `npm run train:shock`. |
 | GCLI Key Rotation LLM layer | Completed | `gemini.ts`, `env.ts`, `/api/chat` | Replaces raw Gemini SDK with SWRR/Weighted Random key rotation, failover, model mapping. |
 | PageIndex import API/UI | Completed | `/api/documents/import`, admin documents page | Imports existing PageIndex JSON. |
 | Local TS import script | Completed | `scripts/import-pageindex.ts` | `npm run import:pageindex -- --file ...`. |
@@ -146,8 +159,8 @@ Runtime server logic is under `apps/web/lib/server/`. API route handlers parse/v
 - [ ] Ingest dengue datasets into MongoDB, e.g. `npm run import:dataset -- --file "D:/Dev/4.research-pj/Papers/paper1/pntd.0005498.s003/baseline.csv" --slug dengue-baseline --title "Dengue baseline" --source paper1` (repeat for `plt.csv` and paper2 `.xls`), then create an `amg` helpdesk pointing at the dataset slug.
 - [x] Create a `pageindex` helpdesk for `tech-support-manual` (slug `tech-support`, tags `tech-support`, topK 6) — scoped chat verified via API (Batch Reject QD question answered with correct section citation).
 - [x] Validate chat + model dropdown in the browser UI at `/chat/tech-support` — verified via Chrome automation: dashboard card, model dropdown switch to `gemini-3.5-flash` (server log confirmed model used), grounded answer with correct `Update Auto Batch Time or Set up Tax` citation and PageIndex citations drawer.
-- [ ] Optional recall boost: generate per-node `summary` with Gemini during `md-to-pageindex` conversion (retrieval already scores the summary field) — helps Vietnamese questions over English content.
-- [ ] Deferred: upload extracted images to R2 and surface per-node image URLs in chat citations (image refs already kept inline in node content).
+- [x] Generate per-node Vietnamese `summary` with Gemini (`scripts/generate-node-summaries.ts`) and re-import — done for tech-support-manual (140/142 nodes).
+- [x] Images in chat answers: 561 images enhanced (normalize+sharpen) → WebP (29.3MB→7.5MB) in `apps/web/public/doc-images/tech-support-manual/`; node refs rewritten to `/doc-images/...webp`; sources carry `images[]` (thumbnails in citations drawer); Gemini instructed to inline relevant image tags (verified: Clerk ID answer embedded image453 at the right step). R2 hosting can replace public/ later if credentials are configured.
 - [ ] End-to-end test `amg` mode against a real dataset (e.g. verify proportion queries match the paper reports).
 - [x] Re-run `npm run typecheck` and `npm run build` after dependencies install.
 - [ ] Add tests for `flattenPageIndexTree`, retrieval scoring, import route, and chat route with mocked Gemini.

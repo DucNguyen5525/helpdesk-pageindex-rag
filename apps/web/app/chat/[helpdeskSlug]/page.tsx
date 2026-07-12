@@ -37,6 +37,8 @@ export default function HelpdeskChatPage() {
   const [error, setError] = useState<string>();
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string>();
+  const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const settings = useMemo(() => loadSettings(), []);
@@ -127,6 +129,32 @@ export default function HelpdeskChatPage() {
     setError(undefined);
   }
 
+  // Delete flow: open confirmation, then remove the session from DB + UI
+  function handleRequestDelete(sessionId?: string) {
+    if (sessionId) {
+      setPendingDeleteId(sessionId);
+    } else {
+      // current chat has no saved session yet — just reset the view
+      handleNewChat();
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDeleteId || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await apiClient.deleteSession(pendingDeleteId);
+      setSessions((current) => current.filter((s) => s.id !== pendingDeleteId));
+      if (pendingDeleteId === activeSessionId) handleNewChat();
+      setPendingDeleteId(undefined);
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setPendingDeleteId(undefined);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   // Handle submitting a user question
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -210,6 +238,7 @@ export default function HelpdeskChatPage() {
         sessions={sessions}
         activeSessionId={activeSessionId}
         onSelectSession={handleSelectSession}
+        onDeleteSession={handleRequestDelete}
         onNewChat={handleNewChat}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
@@ -221,11 +250,8 @@ export default function HelpdeskChatPage() {
       <main className="flex flex-1 flex-col overflow-hidden bg-white">
         <ChatHeader
           title={activeSession?.title || helpdesk.name}
-          onClearChat={messages.length > 0 ? handleNewChat : undefined}
+          onClearChat={messages.length > 0 ? () => handleRequestDelete(activeSessionId) : undefined}
           hasMessages={messages.length > 0}
-          models={models}
-          selectedModel={selectedModel}
-          onSelectModel={handleSelectModel}
         />
 
         {/* Dashboard back link */}
@@ -269,7 +295,7 @@ export default function HelpdeskChatPage() {
               {isLoading ? (
                 <div className="flex items-center gap-3 bg-stone-50/50 py-5 px-6 max-w-4xl mx-auto text-sm text-stone-500">
                   <div className="flex h-2 w-2 animate-ping rounded-full bg-mint" />
-                  <span>Đang tìm kiếm PageIndex & tạo câu trả lời...</span>
+                  <span>Đang tìm kiếm tài liệu & tạo câu trả lời...</span>
                 </div>
               ) : null}
 
@@ -292,9 +318,39 @@ export default function HelpdeskChatPage() {
           setQuestion={setQuestion}
           onSubmit={handleSubmit}
           isLoading={isLoading}
-          topK={helpdesk.topK ?? settings.topK}
-          tags={helpdesk.tags?.join(", ") || settings.tags}
+          models={models}
+          selectedModel={selectedModel}
+          onSelectModel={handleSelectModel}
         />
+
+        {/* Delete confirmation modal */}
+        {pendingDeleteId ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4">
+            <div className="w-full max-w-sm rounded-xl border border-stone-200 bg-white p-5 shadow-lg">
+              <h3 className="text-sm font-semibold text-stone-900">Xóa đoạn chat?</h3>
+              <p className="mt-1.5 text-sm text-stone-600">
+                Đoạn chat &ldquo;{sessions.find((s) => s.id === pendingDeleteId)?.title ?? ""}&rdquo; và toàn bộ tin nhắn sẽ bị
+                xóa vĩnh viễn.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setPendingDeleteId(undefined)}
+                  disabled={isDeleting}
+                  className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-600 transition-colors hover:bg-stone-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {isDeleting ? "Đang xóa..." : "Xóa"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </div>
   );

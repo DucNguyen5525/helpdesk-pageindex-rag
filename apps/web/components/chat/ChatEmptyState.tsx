@@ -42,7 +42,7 @@ export function ChatEmptyState({ onSelectPrompt, helpdeskName, helpdeskDescripti
         {helpdeskName || "Helpdesk Knowledge Assistant"}
       </h2>
       <p className="mt-2 max-w-md text-sm text-stone-500">
-        {helpdeskDescription || <>Hệ thống trợ lý tri thức RAG thông minh, tra cứu dữ liệu chuẩn xác dựa trên cây chỉ mục <span className="font-semibold text-mint">PageIndex</span>.</>}
+        {helpdeskDescription || "Trợ lý tri thức thông minh, tra cứu và trả lời chính xác dựa trên tài liệu nội bộ."}
       </p>
 
       <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
