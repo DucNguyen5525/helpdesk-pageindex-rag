@@ -1,7 +1,7 @@
 # Project Summary
 
-**Last Updated:** 2026-07-13 09:02:57 +07:00
-**Session:** #28 - Private helpdesk access control
+**Last Updated:** 2026-07-17 +07:00
+**Session:** #30 - Dashboard bulk chat-history delete + open chat in new tab
 
 ---
 
@@ -55,7 +55,7 @@ workers/pageindex-ingest/         Optional Python worker/tooling for PageIndex p
 | `package.json` | Root workspace scripts | Builds shared and web only. |
 | `.env.example` | MongoDB/R2/GCLI/Auth env template | AUTH_USERNAME, AUTH_PASSWORD, AUTH_SECRET. |
 | `apps/web/middleware.ts` | Next.js Edge Auth Middleware | Protects all routes except `/login` and `/api/auth/*`. |
-| `apps/web/lib/server/auth.ts` | Server Auth module | Signed HMAC-SHA256 session cookie validation. |
+| `apps/web/lib/server/auth.ts` | Server Auth module | Signed HMAC-SHA256 session cookie validation with admin/child role payloads. |
 | `apps/web/lib/server/repository.ts` | MongoDB repository | Documents, nodes, conversations, messages, helpdesks. |
 | `apps/web/app/login/page.tsx` | Login UI | Authenticates `LittleKai` / `Duc365bmt`. |
 | `apps/web/app/dashboard/page.tsx` | Dashboard UI | List, create, and manage isolated helpdesks. |
@@ -94,9 +94,12 @@ Frontend calls same-origin Next API routes through `apps/web/lib/api-client.ts`.
 /api/auth/login                 Login API
 /api/auth/logout                Logout API
 /api/auth/check                 Auth check API
+/api/accounts                   Admin-only child account list/create API
+/api/accounts/:username/reset   Admin-only child account password reset API
 /api/helpdesks                  Helpdesk list/create API
 /api/helpdesks/[slug]           Helpdesk get/update/delete API
 /api/chat                       Chat Q&A API (supports helpdeskSlug, model, stream:true → NDJSON events)
+/api/chat/sessions              GET: list conversations; DELETE (auth): bulk-delete by {ids} or {all:true}
 /api/chat/sessions/[id]         DELETE: remove conversation + its messages
 /api/chat/messages/[id]         PATCH: set 👍👎 feedback on an assistant message
 /api/documents/analyze          POST: AI suggests import action (new/update, slug, tags)
@@ -114,7 +117,7 @@ Runtime server logic is under `apps/web/lib/server/`. API route handlers parse/v
 | Feature | Status | Files Involved | Notes |
 | --- | --- | --- | --- |
 | Next.js runtime consolidation | Completed | `package.json`, `apps/web/app/api/*` | Main API deploys with Vercel. |
-| Authentication System | Completed | `apps/web/middleware.ts`, `auth.ts`, `/login` | Cookie-based auth for `LittleKai` / `Duc365bmt`; unauthenticated users are redirected from `/dashboard`, `/settings`, `/admin/debug`, `/admin/documents`, and protected admin/debug/document APIs return 401. |
+| Authentication System | Completed | `apps/web/middleware.ts`, `auth.ts`, `/login`, `/api/accounts`, dashboard account UI | Cookie-based auth for env admin plus MongoDB child accounts; signed session payload includes username/role. Admin can create child accounts and reset their passwords. Child accounts can access chat/private helpdesk content but are redirected away from dashboard/admin/settings; admin APIs enforce role server-side. |
 | Multi-Helpdesk System | Completed | `/dashboard`, `/chat/[helpdeskSlug]`, `/api/helpdesks` | Isolated helpdesks with custom tags, topK, systemPrompt; dashboard supports create/edit/delete with confirmation. Helpdesks can be marked private; private helpdesk metadata/chat access requires a valid login session. |
 | Chatbot UI Upgrade (McKay Wrigley) | Completed | `apps/web/app/chat/[helpdeskSlug]/page.tsx`, `components/chat/*`, `BrandIcon.tsx` | Session history sidebar, markdown formatting, collapsed PageIndex citations drawer, shared Headset brand icon. Prompt starters removed from empty chat state; chat sidebar hides the Documents shortcut. |
 | PageIndex Ingestion Skill Update | Completed | `.claude/skills/pageindex-ingestion.md` | Step 0 added for helpdesk selection prompt before upload. |
@@ -148,6 +151,8 @@ Runtime server logic is under `apps/web/lib/server/`. API route handlers parse/v
 | Tech Support Manual ingest + E2E test | Completed | MongoDB `tech-support-manual` doc | Imported (155 nodes, tags `helpdesk`,`tech-support`); chat E2E verified: DEJAVOO double-item question (VI + EN) and tip-setup question answered correctly with DEJAVOO ISSUES / Set up Tip citations. |
 | Optional Python ingestion worker | Completed | `workers/pageindex-ingest/*` | Not run in Vercel runtime. |
 | Authentication | Planning | None | Needed before public use. |
+| Dashboard bulk chat-history delete | Completed | `app/dashboard/page.tsx`, `api/chat/sessions/route.ts` DELETE | Dialog lists sessions with checkboxes + select-all; `bulkDeleteSessions(ids)` / `deleteAllSessions()`. DELETE on `/api/chat/sessions` gated by middleware (GET stays public). |
+| Open chat in new tab from dashboard | Completed | `app/dashboard/page.tsx` | Chat button uses `target="_blank" rel="noopener noreferrer"`. |
 
 **Legend:** Planning / In Progress / Completed
 

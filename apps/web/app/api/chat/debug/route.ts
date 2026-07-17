@@ -3,6 +3,7 @@ import type { RetrievalDebugNode, RetrievalDebugResponse } from "@helpdesk/share
 import { z } from "zod";
 import { routeDocuments } from "@/lib/server/doc-router";
 import { buildGroundedPrompt } from "@/lib/server/gemini";
+import { isRequestAdmin } from "@/lib/server/auth";
 import { getHelpdeskBySlug, getNodesForDocuments, listReadyDocuments } from "@/lib/server/repository";
 import { scoreCandidates, type RetrievedNode } from "@/lib/server/retrieval";
 
@@ -20,6 +21,10 @@ const debugSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const input = debugSchema.parse(await request.json());
     const data = await buildRetrievalDebug(input);

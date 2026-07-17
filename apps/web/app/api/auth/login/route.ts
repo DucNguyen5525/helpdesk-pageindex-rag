@@ -7,6 +7,7 @@ import {
   STANDARD_MAX_AGE_SEC,
   validateCredentials
 } from "@/lib/server/auth";
+import { validateChildCredentials } from "@/lib/server/repository";
 
 export const runtime = "nodejs";
 
@@ -20,13 +21,18 @@ export async function POST(request: Request) {
   try {
     const input = loginSchema.parse(await request.json());
 
-    if (!validateCredentials(input.username, input.password)) {
+    const adminUsername = process.env.AUTH_USERNAME ?? "admin";
+    const account = validateCredentials(input.username, input.password)
+      ? { username: adminUsername, role: "admin" as const }
+      : await validateChildCredentials(input.username, input.password);
+
+    if (!account) {
       return NextResponse.json({ detail: "Invalid credentials" }, { status: 401 });
     }
 
-    const cookie = createSessionCookie();
+    const cookie = createSessionCookie({ username: account.username, role: account.role });
     const maxAge = input.rememberMe ? REMEMBER_ME_MAX_AGE_SEC : STANDARD_MAX_AGE_SEC;
-    const response = NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true, username: account.username, role: account.role });
 
     response.cookies.set(SESSION_COOKIE_NAME, cookie, {
       httpOnly: true,

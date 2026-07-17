@@ -41,6 +41,7 @@ export default function HelpdeskChatPage() {
   const [error, setError] = useState<string>();
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string>();
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -61,6 +62,13 @@ export default function HelpdeskChatPage() {
     }
     loadModels();
   }, [settings]);
+
+  useEffect(() => {
+    apiClient
+      .checkAuth()
+      .then((auth) => setIsAdmin(auth.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   function handleSelectModel(model: string) {
     setSelectedModel(model);
@@ -316,6 +324,7 @@ export default function HelpdeskChatPage() {
             setSidebarCollapsed((prev) => !prev);
           }}
           isMobileDrawer={isMobileSidebarOpen}
+          showAdminLinks={isAdmin}
         />
       </div>
 

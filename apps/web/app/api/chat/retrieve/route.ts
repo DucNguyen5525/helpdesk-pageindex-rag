@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isRequestAdmin } from "@/lib/server/auth";
 import { retrievePageIndexNodes, toRetrievalResponseItem } from "@/lib/server/retrieval";
 
 export const runtime = "nodejs";
@@ -11,6 +12,10 @@ const retrievalSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const input = retrievalSchema.parse(await request.json());
     const nodes = await retrievePageIndexNodes(input);

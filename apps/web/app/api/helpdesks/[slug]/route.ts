@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isRequestAuthenticated } from "@/lib/server/auth";
+import { isRequestAdmin, isRequestAuthenticated } from "@/lib/server/auth";
 import { deleteHelpdesk, getHelpdeskBySlug, updateHelpdesk } from "@/lib/server/repository";
 
 export const runtime = "nodejs";
@@ -36,6 +36,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const { slug } = await params;
     const input = updateHelpdeskSchema.parse(await request.json());
@@ -53,7 +57,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ slug
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const { slug } = await params;
     const deleted = await deleteHelpdesk(slug);

@@ -1,5 +1,6 @@
+import crypto from "crypto";
 import { ObjectId, type Document as MongoDocument } from "mongodb";
-import type { ChatMessage, ChatSession, DatasetColumn, DatasetInfo, Helpdesk, HelpdeskDocument, PageIndexNode, RetrievalMode, SourceReference } from "@helpdesk/shared";
+import type { AuthRole, ChatMessage, ChatSession, DatasetColumn, DatasetInfo, Helpdesk, HelpdeskDocument, PageIndexNode, RetrievalMode, SourceReference, UserAccount } from "@helpdesk/shared";
 import { ensureMongoIndexes, getDb } from "./mongodb";
 
 export interface DocumentRecord extends MongoDocument {
@@ -90,6 +91,16 @@ export interface DatasetRecord extends MongoDocument {
   source: string;
   rowCount: number;
   columns: DatasetColumn[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AccountRecord extends MongoDocument {
+  _id: ObjectId;
+  username: string;
+  passwordHash: string;
+  passwordSalt: string;
+  role: AuthRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -192,6 +203,16 @@ export function serializeDataset(record: DatasetRecord): DatasetInfo {
     source: record.source,
     rowCount: record.rowCount ?? 0,
     columns: record.columns ?? []
+  };
+}
+
+export function serializeAccount(record: AccountRecord): UserAccount {
+  return {
+    id: record._id.toString(),
+    username: record.username,
+    role: record.role,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString()
   };
 }
 
@@ -324,6 +345,24 @@ export async function deleteConversation(conversationId: string) {
   return result.deletedCount > 0;
 }
 
+// Bulk delete: removes the given conversations plus all of their messages in one pass.
+export async function deleteConversations(conversationIds: string[]) {
+  if (conversationIds.length === 0) return 0;
+  const db = await getDb();
+  const ids = conversationIds.map(toObjectId);
+  await db.collection<MessageRecord>("messages").deleteMany({ conversationId: { $in: ids } });
+  const result = await db.collection<ConversationRecord>("conversations").deleteMany({ _id: { $in: ids } });
+  return result.deletedCount;
+}
+
+// Wipes every conversation and message. Used by the dashboard "delete all history" action.
+export async function deleteAllConversations() {
+  const db = await getDb();
+  await db.collection<MessageRecord>("messages").deleteMany({});
+  const result = await db.collection<ConversationRecord>("conversations").deleteMany({});
+  return result.deletedCount;
+}
+
 export async function listMessages(conversationId: string) {
   const db = await getDb();
   const records = await db
@@ -363,6 +402,67 @@ export async function setMessageFeedback(messageId: string, feedback: "up" | "do
     .collection<MessageRecord>("messages")
     .updateOne({ _id: toObjectId(messageId), role: "assistant" }, { $set: { feedback } });
   return result.matchedCount > 0;
+}
+
+export async function listChildAccounts(): Promise<UserAccount[]> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const records = await db.collection<AccountRecord>("accounts").find({ role: "child" }).sort({ createdAt: -1 }).toArray();
+  return records.map(serializeAccount);
+}
+
+export async function createChildAccount(input: { username: string; password: string }): Promise<UserAccount> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const username = normalizeUsername(input.username);
+  if (!username) throw new Error("Username is required");
+  if (username === normalizeUsername(process.env.AUTH_USERNAME ?? "")) {
+    throw new Error("Username is reserved for the admin account");
+  }
+
+  const existing = await db.collection<AccountRecord>("accounts").findOne({ username });
+  if (existing) throw new Error(`Account '${username}' already exists`);
+
+  const now = new Date();
+  const password = hashPassword(input.password);
+  const result = await db.collection<AccountRecord>("accounts").insertOne({
+    _id: new ObjectId(),
+    username,
+    passwordHash: password.hash,
+    passwordSalt: password.salt,
+    role: "child",
+    createdAt: now,
+    updatedAt: now
+  });
+  const saved = await db.collection<AccountRecord>("accounts").findOne({ _id: result.insertedId });
+  if (!saved) throw new Error("Failed to create account");
+  return serializeAccount(saved);
+}
+
+export async function resetChildAccountPassword(username: string, password: string): Promise<UserAccount | null> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const hashed = hashPassword(password);
+  const result = await db.collection<AccountRecord>("accounts").findOneAndUpdate(
+    { username: normalizeUsername(username), role: "child" },
+    {
+      $set: {
+        passwordHash: hashed.hash,
+        passwordSalt: hashed.salt,
+        updatedAt: new Date()
+      }
+    },
+    { returnDocument: "after" }
+  );
+  return result ? serializeAccount(result as unknown as AccountRecord) : null;
+}
+
+export async function validateChildCredentials(username: string, password: string): Promise<UserAccount | null> {
+  await ensureMongoIndexes();
+  const db = await getDb();
+  const record = await db.collection<AccountRecord>("accounts").findOne({ username: normalizeUsername(username), role: "child" });
+  if (!record || !verifyPassword(password, record.passwordSalt, record.passwordHash)) return null;
+  return serializeAccount(record);
 }
 
 export async function listHelpdesks(): Promise<Helpdesk[]> {
@@ -513,4 +613,20 @@ export async function upsertDatasetWithRows(input: {
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function hashPassword(password: string) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return { salt, hash };
+}
+
+function verifyPassword(password: string, salt: string, expectedHash: string) {
+  const hash = crypto.scryptSync(password, salt, 64);
+  const expected = Buffer.from(expectedHash, "hex");
+  return hash.length === expected.length && crypto.timingSafeEqual(hash, expected);
 }

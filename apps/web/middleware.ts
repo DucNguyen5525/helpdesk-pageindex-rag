@@ -17,6 +17,7 @@ function isProtectedPath(pathname: string, method: string): boolean {
   }
 
   if (
+    pathname.startsWith("/api/accounts") ||
     pathname.startsWith("/api/documents") ||
     pathname === "/api/chat/debug" ||
     pathname === "/api/chat/retrieve"
@@ -26,6 +27,11 @@ function isProtectedPath(pathname: string, method: string): boolean {
 
   // Protect helpdesk modification APIs (POST, PUT, DELETE)
   if (pathname.startsWith("/api/helpdesks") && ["POST", "PUT", "DELETE"].includes(method)) {
+    return true;
+  }
+
+  // Protect bulk chat-history deletion (GET stays public for the chat sidebar)
+  if (pathname === "/api/chat/sessions" && method === "DELETE") {
     return true;
   }
 

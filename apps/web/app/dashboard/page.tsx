@@ -1,6 +1,6 @@
 "use client";
 
-import type { Helpdesk, HelpdeskDocument } from "@helpdesk/shared";
+import type { ChatSession, Helpdesk, HelpdeskDocument, UserAccount } from "@helpdesk/shared";
 import {
   Plus,
   MessageSquare,
@@ -11,10 +11,14 @@ import {
   Layers,
   Trash2,
   Lock,
+  KeyRound,
+  UserPlus,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { AdminGuard } from "@/components/AdminGuard";
 import { BrandIcon } from "@/components/BrandIcon";
 import { apiClient, getErrorMessage } from "@/lib/api-client";
 
@@ -59,17 +63,80 @@ export default function DashboardPage() {
   const router = useRouter();
   const [helpdesks, setHelpdesks] = useState<Helpdesk[]>([]);
   const [documents, setDocuments] = useState<HelpdeskDocument[]>([]);
+  const [accounts, setAccounts] = useState<UserAccount[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [form, setForm] = useState<HelpdeskFormData>(defaultForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingDeleteSlug, setPendingDeleteSlug] = useState<string | null>(null);
   const [isDeletingHelpdesk, setIsDeletingHelpdesk] = useState(false);
+  const [newAccountUsername, setNewAccountUsername] = useState("");
+  const [newAccountPassword, setNewAccountPassword] = useState("");
+  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({});
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
   const [error, setError] = useState<string>();
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
+  // Bulk chat-history deletion dialog
+  const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(false);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+  const [isDeletingSessions, setIsDeletingSessions] = useState(false);
+
   const isEditing = editingSlug !== null;
+
+  async function openChatHistoryDialog() {
+    setIsChatHistoryOpen(true);
+    setSelectedSessionIds(new Set());
+    setIsLoadingSessions(true);
+    try {
+      const res = await apiClient.listSessions();
+      setChatSessions(res.data);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }
+
+  function toggleSessionSelected(id: string) {
+    setSelectedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllSessions() {
+    setSelectedSessionIds((prev) =>
+      prev.size === chatSessions.length ? new Set() : new Set(chatSessions.map((s) => s.id))
+    );
+  }
+
+  async function handleDeleteSelectedSessions() {
+    if (selectedSessionIds.size === 0) return;
+    const deleteAll = selectedSessionIds.size === chatSessions.length && chatSessions.length > 0;
+    setIsDeletingSessions(true);
+    try {
+      if (deleteAll) {
+        await apiClient.deleteAllSessions();
+        setChatSessions([]);
+      } else {
+        const ids = Array.from(selectedSessionIds);
+        await apiClient.bulkDeleteSessions(ids);
+        setChatSessions((prev) => prev.filter((s) => !selectedSessionIds.has(s.id)));
+      }
+      setSelectedSessionIds(new Set());
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsDeletingSessions(false);
+    }
+  }
 
   function handleOpenCreate() {
     setEditingSlug(null);
@@ -136,8 +203,21 @@ export default function DashboardPage() {
     }
   }
 
+  async function fetchAccounts() {
+    setIsLoadingAccounts(true);
+    try {
+      const res = await apiClient.listAccounts();
+      setAccounts(res.data);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  }
+
   useEffect(() => {
     fetchHelpdesks();
+    fetchAccounts();
     apiClient
       .listDocuments()
       .then((res) => setDocuments(res.data))
@@ -145,6 +225,42 @@ export default function DashboardPage() {
         // document checkboxes are hidden when the list cannot be loaded
       });
   }, []);
+
+  async function handleCreateAccount(event: FormEvent) {
+    event.preventDefault();
+    if (!newAccountUsername.trim() || newAccountPassword.length < 6 || isSavingAccount) return;
+    setIsSavingAccount(true);
+    setError(undefined);
+    try {
+      await apiClient.createChildAccount({
+        username: newAccountUsername.trim(),
+        password: newAccountPassword
+      });
+      setNewAccountUsername("");
+      setNewAccountPassword("");
+      await fetchAccounts();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSavingAccount(false);
+    }
+  }
+
+  async function handleResetPassword(username: string) {
+    const password = resetPasswords[username] ?? "";
+    if (password.length < 6 || isSavingAccount) return;
+    setIsSavingAccount(true);
+    setError(undefined);
+    try {
+      await apiClient.resetChildAccountPassword(username, { password });
+      setResetPasswords((current) => ({ ...current, [username]: "" }));
+      await fetchAccounts();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSavingAccount(false);
+    }
+  }
 
   function toggleDocumentSlug(slug: string) {
     setForm((prev) => ({
@@ -234,7 +350,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-stone-50">
+    <AdminGuard>
+      <div className="flex min-h-screen flex-col bg-stone-50">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 md:px-6">
@@ -290,13 +407,22 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <button
-            onClick={handleOpenCreate}
-            className="flex items-center gap-2 rounded-lg bg-mint px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-mint/90 active:scale-[0.98]"
-          >
-            <Plus size={16} />
-            <span>Tạo Helpdesk mới</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openChatHistoryDialog}
+              className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-[0.98]"
+            >
+              <History size={16} />
+              <span>Xóa lịch sử chat</span>
+            </button>
+            <button
+              onClick={handleOpenCreate}
+              className="flex items-center gap-2 rounded-lg bg-mint px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-mint/90 active:scale-[0.98]"
+            >
+              <Plus size={16} />
+              <span>Tạo Helpdesk mới</span>
+            </button>
+          </div>
         </div>
 
         {/* Error */}
@@ -388,6 +514,8 @@ export default function DashboardPage() {
                 <div className="mt-auto flex items-center gap-2 border-t border-stone-100 pt-3">
                   <Link
                     href={`/chat/${hd.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-mint px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-mint/90 active:scale-[0.98]"
                   >
                     <MessageSquare size={14} />
@@ -413,6 +541,76 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
+
+        <section className="mt-10 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-stone-900">Tài khoản con</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Tài khoản con chỉ dùng để đăng nhập và chat, không có quyền vào dashboard, documents, debug hoặc settings.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreateAccount} className="grid gap-3 border-b border-stone-100 pb-4 md:grid-cols-[1fr_1fr_auto]">
+            <input
+              value={newAccountUsername}
+              onChange={(event) => setNewAccountUsername(event.target.value)}
+              placeholder="username"
+              className="h-10 rounded-lg border border-stone-300 px-3 text-sm outline-none focus:border-mint focus:ring-2 focus:ring-mint/20"
+            />
+            <input
+              type="password"
+              value={newAccountPassword}
+              onChange={(event) => setNewAccountPassword(event.target.value)}
+              placeholder="mật khẩu mới"
+              className="h-10 rounded-lg border border-stone-300 px-3 text-sm outline-none focus:border-mint focus:ring-2 focus:ring-mint/20"
+            />
+            <button
+              type="submit"
+              disabled={isSavingAccount || !newAccountUsername.trim() || newAccountPassword.length < 6}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-mint px-4 text-sm font-semibold text-white transition-all hover:bg-mint/90 active:scale-[0.98] disabled:opacity-50"
+            >
+              <UserPlus size={15} />
+              Tạo tài khoản
+            </button>
+          </form>
+
+          <div className="mt-4 space-y-2">
+            {isLoadingAccounts ? (
+              <div className="py-4 text-sm text-stone-400">Đang tải tài khoản...</div>
+            ) : accounts.length === 0 ? (
+              <div className="rounded-lg bg-stone-50 p-4 text-sm text-stone-500">Chưa có tài khoản con.</div>
+            ) : (
+              accounts.map((account) => (
+                <div key={account.id} className="grid gap-3 rounded-lg border border-stone-100 p-3 md:grid-cols-[1fr_1fr_auto] md:items-center">
+                  <div>
+                    <div className="text-sm font-semibold text-stone-900">{account.username}</div>
+                    <div className="text-xs text-stone-400">child account</div>
+                  </div>
+                  <input
+                    type="password"
+                    value={resetPasswords[account.username] ?? ""}
+                    onChange={(event) =>
+                      setResetPasswords((current) => ({ ...current, [account.username]: event.target.value }))
+                    }
+                    placeholder="mật khẩu reset"
+                    className="h-9 rounded-lg border border-stone-300 px-3 text-sm outline-none focus:border-mint focus:ring-2 focus:ring-mint/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleResetPassword(account.username)}
+                    disabled={isSavingAccount || (resetPasswords[account.username] ?? "").length < 6}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    <KeyRound size={14} />
+                    Reset mật khẩu
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </main>
 
       {/* Create Helpdesk Modal */}
@@ -707,6 +905,93 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : null}
-    </div>
+
+      {/* Bulk chat-history deletion dialog */}
+      {isChatHistoryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-ink">Xóa lịch sử chat</h3>
+                <p className="mt-1 text-sm text-stone-500">
+                  Chọn các phiên chat cần xóa. Thao tác này xóa cả tin nhắn và không thể hoàn tác.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsChatHistoryOpen(false)}
+                className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                aria-label="Đóng"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between border-b border-stone-100 pb-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-stone-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-rose-600"
+                  checked={chatSessions.length > 0 && selectedSessionIds.size === chatSessions.length}
+                  onChange={toggleSelectAllSessions}
+                  disabled={chatSessions.length === 0}
+                />
+                Chọn tất cả ({chatSessions.length})
+              </label>
+              <span className="text-xs text-stone-400">Đã chọn {selectedSessionIds.size}</span>
+            </div>
+
+            <div className="mt-2 flex-1 overflow-y-auto">
+              {isLoadingSessions ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-400">
+                  <div className="h-2 w-2 animate-ping rounded-full bg-mint" />
+                  Đang tải...
+                </div>
+              ) : chatSessions.length === 0 ? (
+                <div className="py-10 text-center text-sm text-stone-400">Chưa có lịch sử chat nào.</div>
+              ) : (
+                <ul className="divide-y divide-stone-100">
+                  {chatSessions.map((session) => (
+                    <li key={session.id}>
+                      <label className="flex cursor-pointer items-center gap-3 px-1 py-2.5 transition-colors hover:bg-stone-50">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 shrink-0 accent-rose-600"
+                          checked={selectedSessionIds.has(session.id)}
+                          onChange={() => toggleSessionSelected(session.id)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-stone-700">{session.title || "(Không có tiêu đề)"}</p>
+                          <p className="text-xs text-stone-400">
+                            {new Date(session.updatedAt).toLocaleString("vi-VN")}
+                          </p>
+                        </div>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2 border-t border-stone-100 pt-4">
+              <button
+                onClick={() => setIsChatHistoryOpen(false)}
+                className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-50"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={handleDeleteSelectedSessions}
+                disabled={selectedSessionIds.size === 0 || isDeletingSessions}
+                className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                {isDeletingSessions ? "Đang xóa..." : `Xóa (${selectedSessionIds.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      </div>
+    </AdminGuard>
   );
 }

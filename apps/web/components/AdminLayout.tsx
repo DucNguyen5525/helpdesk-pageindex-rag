@@ -3,6 +3,7 @@
 import { Bug, FileText, MessageSquare, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AdminGuard } from "@/components/AdminGuard";
 import { BrandIcon } from "@/components/BrandIcon";
 
 const navItems = [
@@ -16,7 +17,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-stone-50 lg:grid lg:grid-cols-[240px_1fr]">
+    <AdminGuard>
+      <div className="min-h-screen bg-stone-50 lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="border-b border-stone-200 bg-white lg:min-h-screen lg:border-b-0 lg:border-r">
         <div className="flex h-14 items-center border-b border-stone-200 px-5 font-semibold text-stone-800">
           <Link href="/chat" className="flex items-center gap-2">
@@ -44,6 +46,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       <main className="min-h-screen bg-stone-50">{children}</main>
-    </div>
+      </div>
+    </AdminGuard>
   );
 }

@@ -42,6 +42,7 @@ export async function ensureMongoIndexes() {
     db.collection("feedback").createIndex({ messageId: 1 }),
     db.collection("datasets").createIndex({ datasetSlug: 1 }, { unique: true }),
     db.collection("dataset_rows").createIndex({ datasetId: 1 }),
-    db.collection("prediction_models").createIndex({ slug: 1 }, { unique: true })
+    db.collection("prediction_models").createIndex({ slug: 1 }, { unique: true }),
+    db.collection("accounts").createIndex({ username: 1 }, { unique: true })
   ]);
 }

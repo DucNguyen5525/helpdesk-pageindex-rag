@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isRequestAuthenticated } from "@/lib/server/auth";
+import { isRequestAdmin, isRequestAuthenticated } from "@/lib/server/auth";
 import { createHelpdesk, listHelpdesks } from "@/lib/server/repository";
 
 export const runtime = "nodejs";
@@ -31,6 +31,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const input = createHelpdeskSchema.parse(await request.json());
     const helpdesk = await createHelpdesk(input);

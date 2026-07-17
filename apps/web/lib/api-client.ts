@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatResponse, ChatSession, ChatStreamEvent, Helpdesk, HelpdeskDocument, ImportSuggestion, MessageFeedback, ModelsInfo, PredictionModelInfo, PredictionResult, RetrievalDebugResponse, RetrievalMode, RetrievalResponseItem } from "@helpdesk/shared";
+import type { AuthInfo, ChatMessage, ChatResponse, ChatSession, ChatStreamEvent, Helpdesk, HelpdeskDocument, ImportSuggestion, MessageFeedback, ModelsInfo, PredictionModelInfo, PredictionResult, RetrievalDebugResponse, RetrievalMode, RetrievalResponseItem, UserAccount } from "@helpdesk/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -29,6 +29,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.status === 401) return "Bạn cần đăng nhập để tiếp tục.";
+    if (error.status === 403) return "Tài khoản này không có quyền thực hiện thao tác đó.";
     if (error.status === 422) return "Please check the input and try again.";
     if (error.status === 404) return "The requested item was not found.";
     if (error.status === 429) return "This chat session has reached its question limit. Please start a new session.";
@@ -128,14 +130,26 @@ export const apiClient = {
     request<{ data: ChatMessage[] }>(`/api/chat/sessions/${conversationId}/messages`),
   deleteSession: (conversationId: string) =>
     request<void>(`/api/chat/sessions/${conversationId}`, { method: "DELETE" }),
+  bulkDeleteSessions: (ids: string[]) =>
+    request<{ deleted: number }>("/api/chat/sessions", { method: "DELETE", body: JSON.stringify({ ids }) }),
+  deleteAllSessions: () =>
+    request<{ deleted: number }>("/api/chat/sessions", { method: "DELETE", body: JSON.stringify({ all: true }) }),
 
   // Auth
   login: (body: { username: string; password: string; rememberMe?: boolean }) =>
-    request<{ ok: boolean }>("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
+    request<{ ok: boolean; username: string; role: "admin" | "child" }>("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
   logout: () =>
     request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   checkAuth: () =>
-    request<{ authenticated: boolean }>("/api/auth/check"),
+    request<AuthInfo>("/api/auth/check"),
+
+  // Accounts
+  listAccounts: () =>
+    request<{ data: UserAccount[] }>("/api/accounts"),
+  createChildAccount: (body: { username: string; password: string }) =>
+    request<{ data: UserAccount }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
+  resetChildAccountPassword: (username: string, body: { password: string }) =>
+    request<{ data: UserAccount }>(`/api/accounts/${encodeURIComponent(username)}/reset`, { method: "PATCH", body: JSON.stringify(body) }),
 
   // Helpdesks
   listHelpdesks: () =>

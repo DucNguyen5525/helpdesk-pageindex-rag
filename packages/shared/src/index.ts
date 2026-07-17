@@ -1,6 +1,7 @@
 export type DocumentStatus = "ready" | "processing" | "failed";
 export type MessageRole = "user" | "assistant" | "system";
 export type RetrievalMode = "pageindex" | "amg";
+export type AuthRole = "admin" | "child";
 
 export interface HelpdeskDocument {
   id: string;
@@ -85,6 +86,20 @@ export type ChatStreamEvent =
 export interface ModelsInfo {
   models: string[];
   defaultModel: string;
+}
+
+export interface AuthInfo {
+  authenticated: boolean;
+  username?: string;
+  role?: AuthRole;
+}
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  role: AuthRole;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ImportSuggestion {

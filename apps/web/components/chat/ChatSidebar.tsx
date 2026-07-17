@@ -16,6 +16,7 @@ interface ChatSidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   isMobileDrawer?: boolean;
+  showAdminLinks?: boolean;
 }
 
 export function ChatSidebar({
@@ -26,7 +27,8 @@ export function ChatSidebar({
   onNewChat,
   collapsed,
   onToggleCollapse,
-  isMobileDrawer = false
+  isMobileDrawer = false,
+  showAdminLinks = false
 }: ChatSidebarProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const pathname = usePathname();
@@ -140,31 +142,32 @@ export function ChatSidebar({
         )}
       </div>
 
-      {/* Bottom Nav Links */}
-      <div className="border-t border-stone-800 p-2 space-y-1">
-        {[
-          { href: "/admin/debug", label: "Debug", icon: Bug },
-          { href: "/settings", label: "Settings", icon: Settings }
-        ].map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
-                isActive
-                  ? "bg-stone-800 text-white"
-                  : "text-stone-400 hover:bg-stone-800/60 hover:text-stone-200"
-              }`}
-              title={item.label}
-            >
-              <Icon size={16} />
-              {!collapsed ? <span>{item.label}</span> : null}
-            </Link>
-          );
-        })}
-      </div>
+      {showAdminLinks ? (
+        <div className="border-t border-stone-800 p-2 space-y-1">
+          {[
+            { href: "/admin/debug", label: "Debug", icon: Bug },
+            { href: "/settings", label: "Settings", icon: Settings }
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
+                  isActive
+                    ? "bg-stone-800 text-white"
+                    : "text-stone-400 hover:bg-stone-800/60 hover:text-stone-200"
+                }`}
+                title={item.label}
+              >
+                <Icon size={16} />
+                {!collapsed ? <span>{item.label}</span> : null}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
     </aside>
   );
 }

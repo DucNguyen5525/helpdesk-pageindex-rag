@@ -27,8 +27,10 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
+        const body = await res.json();
         const nextPath = new URLSearchParams(window.location.search).get("next");
-        router.push(nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard");
+        const fallbackPath = body.role === "admin" ? "/dashboard" : "/chat";
+        router.push(nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : fallbackPath);
       } else {
         const body = await res.json().catch(() => null);
         setError(body?.error || "Tên đăng nhập hoặc mật khẩu không đúng.");

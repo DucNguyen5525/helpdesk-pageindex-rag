@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isRequestAdmin } from "@/lib/server/auth";
 import { importPageIndex, type ImportPageIndexInput } from "@/lib/server/pageindex-importer";
 
 export const runtime = "nodejs";
@@ -16,6 +17,10 @@ const importSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!isRequestAdmin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const input = importSchema.parse(await request.json()) as ImportPageIndexInput;
     const data = await importPageIndex(input);
