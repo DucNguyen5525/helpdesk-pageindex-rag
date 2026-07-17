@@ -130,6 +130,11 @@ export const apiClient = {
     request<{ data: ChatMessage[] }>(`/api/chat/sessions/${conversationId}/messages`),
   deleteSession: (conversationId: string) =>
     request<void>(`/api/chat/sessions/${conversationId}`, { method: "DELETE" }),
+  setSessionPinned: (conversationId: string, pinned: boolean) =>
+    request<{ data: ChatSession }>(`/api/chat/sessions/${conversationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ pinned })
+    }),
   bulkDeleteSessions: (ids: string[]) =>
     request<{ deleted: number }>("/api/chat/sessions", { method: "DELETE", body: JSON.stringify({ ids }) }),
   deleteAllSessions: () =>

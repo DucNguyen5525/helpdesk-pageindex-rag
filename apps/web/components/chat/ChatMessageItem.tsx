@@ -5,6 +5,7 @@ import { Bot, Check, Copy, FileText, ThumbsDown, ThumbsUp, User } from "lucide-r
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ImageLightbox } from "@/components/chat/ImageLightbox";
 
 interface ChatMessageItemProps {
   role: "user" | "assistant";
@@ -19,6 +20,7 @@ interface ChatMessageItemProps {
 export function ChatMessageItem({ role, content, sources, messageId, feedback, isStreaming, onFeedback }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null);
 
   async function handleCopy() {
     try {
@@ -105,17 +107,20 @@ export function ChatMessageItem({ role, content, sources, messageId, feedback, i
                       <table {...props} />
                     </div>
                   ),
-                  img: ({ src, alt }) => (
-                    <a href={typeof src === "string" ? src : undefined} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                  img: ({ src, alt }) => {
+                    const url = typeof src === "string" ? src : undefined;
+                    if (!url) return null;
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={typeof src === "string" ? src : undefined}
+                        src={url}
                         alt={alt ?? ""}
                         loading="lazy"
-                        className="my-2 max-h-72 w-auto rounded-lg border border-stone-200 shadow-sm"
+                        onClick={() => setPreview({ src: url, alt: alt ?? "" })}
+                        className="my-2 max-h-72 w-auto cursor-zoom-in rounded-lg border border-stone-200 shadow-sm transition hover:brightness-95"
                       />
-                    </a>
-                  )
+                    );
+                  }
                 }}
               >
                 {content}
@@ -163,15 +168,21 @@ export function ChatMessageItem({ role, content, sources, messageId, feedback, i
                         {source.images && source.images.length > 0 ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {source.images.map((src) => (
-                              <a key={src} href={src} target="_blank" rel="noreferrer" title="Mở ảnh gốc">
+                              <button
+                                key={src}
+                                type="button"
+                                onClick={() => setPreview({ src, alt: source.documentTitle })}
+                                title="Xem ảnh"
+                                className="rounded focus:outline-none focus:ring-2 focus:ring-mint"
+                              >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={src}
                                   alt=""
                                   loading="lazy"
-                                  className="h-16 rounded border border-stone-200 object-cover transition-opacity hover:opacity-80"
+                                  className="h-16 cursor-zoom-in rounded border border-stone-200 object-cover transition-opacity hover:opacity-80"
                                 />
-                              </a>
+                              </button>
                             ))}
                           </div>
                         ) : null}
@@ -184,6 +195,10 @@ export function ChatMessageItem({ role, content, sources, messageId, feedback, i
           ) : null}
         </div>
       </div>
+
+      {preview ? (
+        <ImageLightbox src={preview.src} alt={preview.alt} onClose={() => setPreview(null)} />
+      ) : null}
     </div>
   );
 }

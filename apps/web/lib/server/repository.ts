@@ -53,6 +53,8 @@ export interface ConversationRecord extends MongoDocument {
   _id: ObjectId;
   userId?: string;
   title: string;
+  pinned?: boolean;
+  pinnedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -159,6 +161,8 @@ export function serializeConversation(record: ConversationRecord): ChatSession {
     id: record._id.toString(),
     userId: record.userId,
     title: record.title,
+    pinned: record.pinned ?? false,
+    pinnedAt: record.pinnedAt?.toISOString(),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString()
   };
@@ -333,8 +337,27 @@ export async function createConversation(title: string, userId?: string) {
 export async function listConversations() {
   await ensureMongoIndexes();
   const db = await getDb();
-  const records = await db.collection<ConversationRecord>("conversations").find({}).sort({ updatedAt: -1 }).limit(50).toArray();
+  // Pinned conversations float to the top (most recently pinned first); the rest follow by recent activity.
+  const records = await db
+    .collection<ConversationRecord>("conversations")
+    .find({})
+    .sort({ pinnedAt: -1, updatedAt: -1 })
+    .limit(50)
+    .toArray();
   return records.map(serializeConversation);
+}
+
+// Pin/unpin a conversation. Pinning stamps `pinnedAt`; unpinning removes both fields.
+export async function setConversationPinned(conversationId: string, pinned: boolean) {
+  const db = await getDb();
+  const id = toObjectId(conversationId);
+  const update = pinned
+    ? { $set: { pinned: true, pinnedAt: new Date() } }
+    : { $unset: { pinned: "", pinnedAt: "" } };
+  const result = await db.collection<ConversationRecord>("conversations").updateOne({ _id: id }, update);
+  if (result.matchedCount === 0) return null;
+  const saved = await db.collection<ConversationRecord>("conversations").findOne({ _id: id });
+  return saved ? serializeConversation(saved) : null;
 }
 
 export async function deleteConversation(conversationId: string) {

@@ -13,6 +13,16 @@ import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ApiError, apiClient, getErrorMessage } from "@/lib/api-client";
 import { loadSettings, parseTags, saveSettings } from "@/lib/settings";
 
+// Pinned conversations first (most recently pinned on top), the rest by recent activity.
+// Mirrors the server-side sort in listConversations so optimistic updates stay consistent.
+function sortSessions(list: ChatSession[]): ChatSession[] {
+  return [...list].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (a.pinned && b.pinned) return (b.pinnedAt ?? "").localeCompare(a.pinnedAt ?? "");
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+}
+
 interface UiMessage {
   id?: string;
   role: "user" | "assistant";
@@ -139,6 +149,24 @@ export default function HelpdeskChatPage() {
       setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  // Pin/unpin a conversation (admin only). Optimistic reorder, revert on failure.
+  async function handleTogglePin(sessionId: string, pinned: boolean) {
+    const previous = sessions;
+    setSessions((current) =>
+      sortSessions(
+        current.map((s) =>
+          s.id === sessionId ? { ...s, pinned, pinnedAt: pinned ? new Date().toISOString() : undefined } : s
+        )
+      )
+    );
+    try {
+      await apiClient.setSessionPinned(sessionId, pinned);
+    } catch (err) {
+      setSessions(previous);
+      setError(getErrorMessage(err));
     }
   }
 
@@ -314,6 +342,8 @@ export default function HelpdeskChatPage() {
           activeSessionId={activeSessionId}
           onSelectSession={handleSelectSession}
           onDeleteSession={handleRequestDelete}
+          onTogglePin={handleTogglePin}
+          canPin={isAdmin}
           onNewChat={handleNewChat}
           collapsed={isMobileSidebarOpen ? false : sidebarCollapsed}
           onToggleCollapse={() => {

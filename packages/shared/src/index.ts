@@ -65,6 +65,8 @@ export interface ChatSession {
   id: string;
   title: string;
   userId?: string;
+  pinned?: boolean;
+  pinnedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
