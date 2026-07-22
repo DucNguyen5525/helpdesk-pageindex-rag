@@ -1,7 +1,7 @@
 "use client";
 
-import type { ChatSession, Helpdesk, MessageFeedback, SourceReference } from "@helpdesk/shared";
-import { ArrowLeft } from "lucide-react";
+import type { ChatSession, Helpdesk, MessageFeedback, SimilarQuestion, SourceReference } from "@helpdesk/shared";
+import { ArrowLeft, ExternalLink, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +54,10 @@ export default function HelpdeskChatPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string>();
   const [isDeleting, setIsDeleting] = useState(false);
+  // Similar-question suggestions shown before spending an AI answer (per-helpdesk toggle).
+  const [similarMatches, setSimilarMatches] = useState<SimilarQuestion[]>([]);
+  const [pendingQuestion, setPendingQuestion] = useState("");
+  const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const settings = useMemo(() => loadSettings(), []);
@@ -117,6 +121,15 @@ export default function HelpdeskChatPage() {
 
   useEffect(() => {
     fetchSessions();
+  }, []);
+
+  // Open a specific past conversation when linked via ?session= (used by similar-question
+  // suggestions opening in a new tab). Runs once on mount; client-side param read avoids
+  // the useSearchParams Suspense requirement.
+  useEffect(() => {
+    const sessionParam = new URLSearchParams(window.location.search).get("session");
+    if (sessionParam) handleSelectSession(sessionParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto scroll on new messages
@@ -205,14 +218,12 @@ export default function HelpdeskChatPage() {
     }
   }
 
-  // Handle submitting a user question
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    const trimmed = question.trim();
-    if (!trimmed || isLoading) return;
-
+  // Streams an AI answer for `trimmed`: appends the user message, then the assistant reply.
+  // Shared by the direct submit path and the "Để AI trả lời" button on the suggestions panel.
+  async function runAsk(trimmed: string) {
+    setSimilarMatches([]);
+    setPendingQuestion("");
     setMessages((current) => [...current, { role: "user", content: trimmed }]);
-    setQuestion("");
     setError(undefined);
     setIsLoading(true);
 
@@ -280,6 +291,43 @@ export default function HelpdeskChatPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Handle submitting a user question. When the helpdesk has similar-question suggestions
+  // enabled, first look up past answers (non-blocking-lite): if any match, surface them and
+  // wait for the user to either reuse one or ask the AI; if none, proceed to the AI directly.
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || isLoading || isCheckingSimilar) return;
+
+    if (helpdesk?.similarQuestions) {
+      setIsCheckingSimilar(true);
+      setError(undefined);
+      try {
+        const { matches } = await apiClient.getSimilarQuestions(helpdeskSlug, trimmed);
+        if (matches.length > 0) {
+          setSimilarMatches(matches);
+          setPendingQuestion(trimmed);
+          setQuestion("");
+          return;
+        }
+      } catch {
+        // fail-open: fall through to a normal AI answer if the lookup fails
+      } finally {
+        setIsCheckingSimilar(false);
+      }
+    }
+
+    setQuestion("");
+    await runAsk(trimmed);
+  }
+
+  // Dismiss the suggestions panel and restore the pending question into the input for editing.
+  function handleDismissSimilar() {
+    setQuestion(pendingQuestion);
+    setSimilarMatches([]);
+    setPendingQuestion("");
   }
 
   // Optimistic feedback toggle persisted through the messages API
@@ -428,12 +476,64 @@ export default function HelpdeskChatPage() {
           )}
         </div>
 
+        {/* Similar past questions — shown before spending an AI answer */}
+        {similarMatches.length > 0 ? (
+          <div className="border-t border-amber-200 bg-amber-50/60 px-4 py-3">
+            <div className="mx-auto max-w-4xl">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-stone-700">
+                <Sparkles size={15} className="text-amber-500" />
+                <span>Đã có câu hỏi tương tự được trả lời trước đây</span>
+              </div>
+              <p className="mb-2 text-xs text-stone-500">
+                Câu hỏi của bạn: <span className="font-medium text-stone-700">{pendingQuestion}</span>
+              </p>
+              <ul className="space-y-2">
+                {similarMatches.map((match) => (
+                  <li key={match.messageId}>
+                    <a
+                      href={`/chat/${helpdeskSlug}?session=${encodeURIComponent(match.conversationId)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group block rounded-lg border border-stone-200 bg-white p-3 transition-colors hover:border-amber-300 hover:bg-amber-50"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-medium text-stone-800">{match.question}</span>
+                        <ExternalLink size={14} className="mt-0.5 shrink-0 text-stone-400 group-hover:text-amber-500" />
+                      </div>
+                      {match.answerPreview ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-stone-500">{match.answerPreview}</p>
+                      ) : null}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => runAsk(pendingQuestion)}
+                  disabled={isLoading}
+                  className="rounded-lg bg-mint px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-mint/90 disabled:opacity-50"
+                >
+                  Để AI trả lời
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissSimilar}
+                  className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-600 transition-colors hover:bg-stone-50"
+                >
+                  Chỉnh sửa câu hỏi
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* Input Bar */}
         <ChatInputBar
           question={question}
           setQuestion={setQuestion}
           onSubmit={handleSubmit}
-          isLoading={isLoading}
+          isLoading={isLoading || isCheckingSimilar}
           models={models}
           selectedModel={selectedModel}
           onSelectModel={handleSelectModel}

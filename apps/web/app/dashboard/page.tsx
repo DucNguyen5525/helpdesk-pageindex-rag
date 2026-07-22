@@ -44,6 +44,8 @@ interface HelpdeskFormData {
   retrievalMode: "pageindex" | "amg";
   datasetSlug: string;
   documentSlugs: string[];
+  queryExpansion: boolean;
+  similarQuestions: boolean;
 }
 
 const defaultForm: HelpdeskFormData = {
@@ -57,6 +59,8 @@ const defaultForm: HelpdeskFormData = {
   retrievalMode: "pageindex",
   datasetSlug: "",
   documentSlugs: [],
+  queryExpansion: false,
+  similarQuestions: false,
 };
 
 export default function DashboardPage() {
@@ -159,6 +163,8 @@ export default function DashboardPage() {
       retrievalMode: hd.retrievalMode ?? "pageindex",
       datasetSlug: hd.datasetSlug ?? "",
       documentSlugs: hd.documentSlugs ?? [],
+      queryExpansion: hd.queryExpansion ?? false,
+      similarQuestions: hd.similarQuestions ?? false,
     });
     setSlugManuallyEdited(true);
     setError(undefined);
@@ -300,6 +306,7 @@ export default function DashboardPage() {
       const datasetSlug =
         form.retrievalMode === "amg" ? form.datasetSlug.trim() || undefined : undefined;
       const documentSlugs = form.retrievalMode === "pageindex" ? form.documentSlugs : [];
+      const queryExpansion = form.retrievalMode === "pageindex" ? form.queryExpansion : false;
 
       if (isEditing && editingSlug) {
         await apiClient.updateHelpdesk(editingSlug, {
@@ -312,6 +319,8 @@ export default function DashboardPage() {
           retrievalMode: form.retrievalMode,
           datasetSlug,
           documentSlugs,
+          queryExpansion,
+          similarQuestions: form.similarQuestions,
         });
       } else {
         await apiClient.createHelpdesk({
@@ -325,6 +334,8 @@ export default function DashboardPage() {
           retrievalMode: form.retrievalMode,
           datasetSlug,
           documentSlugs: documentSlugs.length > 0 ? documentSlugs : undefined,
+          queryExpansion,
+          similarQuestions: form.similarQuestions,
         });
       }
 
@@ -817,6 +828,40 @@ export default function DashboardPage() {
                   </p>
                 </div>
               )}
+
+              {/* Query expansion — only for PageIndex mode */}
+              {form.retrievalMode === "pageindex" && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 p-2.5 text-sm text-stone-700 transition-colors hover:bg-stone-50">
+                  <input
+                    type="checkbox"
+                    checked={form.queryExpansion}
+                    onChange={(e) => setForm((prev) => ({ ...prev, queryExpansion: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 accent-mint"
+                  />
+                  <span className="flex-1">
+                    Mở rộng câu hỏi (query expansion)
+                    <span className="mt-0.5 block text-[11px] text-stone-400">
+                      Trước khi tìm kiếm, AI sinh vài cách diễn đạt tương đương để câu hỏi diễn đạt khác vẫn tìm đúng nội dung. Tốn thêm 1 lượt gọi AI mỗi câu hỏi.
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              {/* Similar-question suggestions — works for any retrieval mode */}
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 p-2.5 text-sm text-stone-700 transition-colors hover:bg-stone-50">
+                <input
+                  type="checkbox"
+                  checked={form.similarQuestions}
+                  onChange={(e) => setForm((prev) => ({ ...prev, similarQuestions: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 accent-mint"
+                />
+                <span className="flex-1">
+                  Gợi ý câu hỏi tương tự
+                  <span className="mt-0.5 block text-[11px] text-stone-400">
+                    Khi gửi câu hỏi, hệ thống tìm các câu hỏi cũ tương tự (BM25) và hiện gợi ý trước; người dùng có thể mở lại chat cũ hoặc bấm để AI trả lời. Không tốn thêm lượt gọi AI.
+                  </span>
+                </span>
+              </label>
 
               {/* Dataset slug — only for AMG mode */}
               {form.retrievalMode === "amg" && (

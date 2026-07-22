@@ -15,7 +15,9 @@ const updateHelpdeskSchema = z.object({
   model: z.string().optional(),
   retrievalMode: z.enum(["pageindex", "amg"]).optional(),
   datasetSlug: z.string().optional(),
-  documentSlugs: z.array(z.string()).optional()
+  documentSlugs: z.array(z.string()).optional(),
+  queryExpansion: z.boolean().optional(),
+  similarQuestions: z.boolean().optional()
 });
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {

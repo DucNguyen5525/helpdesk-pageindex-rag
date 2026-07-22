@@ -1,0 +1,23 @@
+{
+  "_readme": [
+    "Gold set for `npm run eval:retrieval`. Each entry is a question plus what a correct",
+    "retrieval should surface. Fill `expected` with ANY of: documentSlug (the doc that",
+    "should be routed to), nodeIds (specific PageIndex node _id values), or keywords",
+    "(every keyword must appear in a retrieved node's title/summary/content).",
+    "Scope a question with `helpdesk` (preferred, copies its topK/tags/documentSlugs) or",
+    "with `documentSlugs`/`tags`/`topK` directly. Replace these examples with real ones.",
+    "totalRelevant defaults to the number of nodeIds, else 1."
+  ],
+  "cases": [
+    {
+      "question": "Làm sao để cài đặt lại máy P8?",
+      "helpdesk": "tech-support",
+      "expected": { "keywords": ["p8"] }
+    },
+    {
+      "question": "Hướng dẫn khắc phục lỗi kết nối mạng",
+      "helpdesk": "tech-support",
+      "expected": { "keywords": ["mang"] }
+    }
+  ]
+}

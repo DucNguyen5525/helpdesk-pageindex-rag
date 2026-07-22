@@ -14,6 +14,7 @@
     "test": "npm run test --workspace @helpdesk/web",
     "import:pageindex": "tsx scripts/import-pageindex.ts",
     "debug:retrieval": "tsx --env-file=.env scripts/debug-retrieval.ts",
+    "eval:retrieval": "tsx --env-file=.env scripts/eval-retrieval.ts",
     "import:dataset": "tsx scripts/import-dataset.ts",
     "train:shock": "tsx scripts/train-shock-model.ts"
   },

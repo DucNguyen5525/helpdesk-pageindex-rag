@@ -5,6 +5,7 @@ import { routeDocuments } from "@/lib/server/doc-router";
 import { generateGroundedAnswer, generateGroundedAnswerStream } from "@/lib/server/gemini";
 import { isRequestAuthenticated } from "@/lib/server/auth";
 import { rewriteFollowupQuestion } from "@/lib/server/question-rewriter";
+import { expandQuery } from "@/lib/server/query-expansion";
 import {
   addMessage,
   createConversation,
@@ -14,7 +15,7 @@ import {
   listMessages,
   listReadyDocuments
 } from "@/lib/server/repository";
-import { retrievePageIndexNodes, toSourceReference } from "@/lib/server/retrieval";
+import { retrievePageIndexNodes, retrievePageIndexNodesExpanded, toSourceReference } from "@/lib/server/retrieval";
 import { generateTabularAnswer } from "@/lib/server/tabular-qa";
 
 export const runtime = "nodejs";
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
 
     const conversation = input.conversationId
       ? { id: input.conversationId }
-      : await createConversation(input.question.slice(0, 80));
+      : await createConversation(input.question.slice(0, 80), input.helpdeskSlug);
 
     await addMessage({ conversationId: conversation.id, role: "user", content: input.question });
 
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
     let datasetSlug: string | undefined;
     let model = input.model;
     let documentSlugs: string[] | undefined;
+    let useQueryExpansion = false;
 
     if (input.helpdeskSlug && helpdesk) {
       const helpdeskTags = helpdesk.tags ?? [];
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
       datasetSlug = helpdesk.datasetSlug ?? input.helpdeskSlug;
       model = input.model ?? helpdesk.model;
       documentSlugs = helpdesk.documentSlugs?.length ? helpdesk.documentSlugs : undefined;
+      useQueryExpansion = helpdesk.queryExpansion ?? false;
     }
 
     // Follow-up turns lose their subject without history: rewrite into a standalone
@@ -110,8 +113,16 @@ export async function POST(request: Request) {
       routedSlugs = [candidates[0].slug];
     }
 
-    // Stage 2: lexical PageIndex retrieval inside the routed documents.
-    const retrieved = await retrievePageIndexNodes({ query: question, tags, documentSlugs: routedSlugs, topK });
+    // Stage 2: lexical PageIndex retrieval inside the routed documents. When the helpdesk
+    // enables query expansion, retrieve over the question plus LLM-generated paraphrases so
+    // reworded queries still hit the right node (query-expansion.ts). Fail-open to plain retrieval.
+    const expansions = useQueryExpansion ? await expandQuery(question, model) : [];
+    if (expansions.length > 0) {
+      console.log(`Query expansion (${expansions.length}): ${expansions.join(" | ")}`);
+    }
+    const retrieved = expansions.length > 0
+      ? await retrievePageIndexNodesExpanded({ query: question, tags, documentSlugs: routedSlugs, topK, expansions })
+      : await retrievePageIndexNodes({ query: question, tags, documentSlugs: routedSlugs, topK });
     const sources = retrieved.map(toSourceReference);
 
     if (!input.stream) {

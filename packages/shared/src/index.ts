@@ -174,8 +174,20 @@ export interface Helpdesk {
   retrievalMode: RetrievalMode;
   datasetSlug?: string;
   documentSlugs?: string[];
+  queryExpansion?: boolean;
+  similarQuestions?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// A past answered question surfaced by BM25 before spending a new AI answer.
+export interface SimilarQuestion {
+  conversationId: string;
+  messageId: string;
+  question: string;
+  answerPreview: string;
+  score: number;
+  createdAt: string;
 }
 
 export interface DatasetColumn {

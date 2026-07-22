@@ -52,6 +52,9 @@ export interface CreatePageIndexNodeInput {
 export interface ConversationRecord extends MongoDocument {
   _id: ObjectId;
   userId?: string;
+  // Which helpdesk this conversation belongs to. Set on creation; older conversations
+  // (pre-Phase-2) may lack it and are simply invisible to similar-question search.
+  helpdeskSlug?: string;
   title: string;
   pinned?: boolean;
   pinnedAt?: Date;
@@ -82,6 +85,8 @@ export interface HelpdeskRecord extends MongoDocument {
   retrievalMode?: RetrievalMode;
   datasetSlug?: string;
   documentSlugs?: string[];
+  queryExpansion?: boolean;
+  similarQuestions?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -194,6 +199,8 @@ export function serializeHelpdesk(record: HelpdeskRecord): Helpdesk {
     retrievalMode: record.retrievalMode ?? "pageindex",
     datasetSlug: record.datasetSlug,
     documentSlugs: record.documentSlugs,
+    queryExpansion: record.queryExpansion ?? false,
+    similarQuestions: record.similarQuestions ?? false,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString()
   };
@@ -467,13 +474,14 @@ function slugifyNodeId(value: string) {
   );
 }
 
-export async function createConversation(title: string, userId?: string) {
+export async function createConversation(title: string, helpdeskSlug?: string, userId?: string) {
   await ensureMongoIndexes();
   const db = await getDb();
   const now = new Date();
   const result = await db.collection<ConversationRecord>("conversations").insertOne({
     _id: new ObjectId(),
     userId,
+    helpdeskSlug,
     title,
     createdAt: now,
     updatedAt: now
@@ -543,6 +551,62 @@ export async function listMessages(conversationId: string) {
     .sort({ createdAt: 1 })
     .toArray();
   return records.map(serializeMessage);
+}
+
+export interface HelpdeskQnaPair {
+  conversationId: string;
+  messageId: string;
+  question: string;
+  answer: string;
+  createdAt: Date;
+}
+
+// Recent answered Q&A pairs for one helpdesk, for similar-question search (similar-questions.ts).
+// Pairs each user message with the assistant reply that immediately follows it in the same
+// conversation, and drops pairs whose answer was thumbs-downed so we never resurface bad answers.
+export async function getRecentHelpdeskQna(helpdeskSlug: string, limit: number): Promise<HelpdeskQnaPair[]> {
+  const db = await getDb();
+  const conversations = await db
+    .collection<ConversationRecord>("conversations")
+    .find({ helpdeskSlug })
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .toArray();
+  if (conversations.length === 0) return [];
+
+  const conversationIds = conversations.map((conversation) => conversation._id);
+  const messages = await db
+    .collection<MessageRecord>("messages")
+    .find({ conversationId: { $in: conversationIds } })
+    .sort({ conversationId: 1, createdAt: 1 })
+    .toArray();
+
+  const byConversation = new Map<string, MessageRecord[]>();
+  for (const message of messages) {
+    const key = message.conversationId.toString();
+    const list = byConversation.get(key) ?? [];
+    list.push(message);
+    byConversation.set(key, list);
+  }
+
+  const pairs: HelpdeskQnaPair[] = [];
+  for (const list of byConversation.values()) {
+    for (let index = 0; index < list.length - 1; index += 1) {
+      const question = list[index];
+      const answer = list[index + 1];
+      if (question.role !== "user" || answer.role !== "assistant") continue;
+      if (answer.feedback === "down") continue;
+      if (!question.content.trim() || !answer.content.trim()) continue;
+      pairs.push({
+        conversationId: question.conversationId.toString(),
+        messageId: question._id.toString(),
+        question: question.content,
+        answer: answer.content,
+        createdAt: question.createdAt
+      });
+    }
+  }
+  return pairs;
 }
 
 export async function addMessage(input: {
@@ -650,7 +714,7 @@ export async function getHelpdeskBySlug(slug: string): Promise<Helpdesk | null> 
   return record ? serializeHelpdesk(record) : null;
 }
 
-export async function createHelpdesk(input: { name: string; slug: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }): Promise<Helpdesk> {
+export async function createHelpdesk(input: { name: string; slug: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[]; queryExpansion?: boolean; similarQuestions?: boolean }): Promise<Helpdesk> {
   await ensureMongoIndexes();
   const db = await getDb();
   const now = new Date();
@@ -669,6 +733,8 @@ export async function createHelpdesk(input: { name: string; slug: string; descri
     retrievalMode: input.retrievalMode ?? "pageindex",
     datasetSlug: input.datasetSlug,
     documentSlugs: input.documentSlugs,
+    queryExpansion: input.queryExpansion ?? false,
+    similarQuestions: input.similarQuestions ?? false,
     createdAt: now,
     updatedAt: now
   });
@@ -677,7 +743,7 @@ export async function createHelpdesk(input: { name: string; slug: string; descri
   return serializeHelpdesk(saved);
 }
 
-export async function updateHelpdesk(slug: string, input: { name?: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }): Promise<Helpdesk | null> {
+export async function updateHelpdesk(slug: string, input: { name?: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[]; queryExpansion?: boolean; similarQuestions?: boolean }): Promise<Helpdesk | null> {
   const db = await getDb();
   const now = new Date();
   const result = await db.collection<HelpdeskRecord>("helpdesks").findOneAndUpdate(

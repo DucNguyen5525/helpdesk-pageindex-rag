@@ -1,4 +1,4 @@
-import type { AuthInfo, ChatMessage, ChatResponse, ChatSession, ChatStreamEvent, Helpdesk, HelpdeskDocument, ImportSuggestion, MessageFeedback, ModelsInfo, PageIndexNode, PredictionModelInfo, PredictionResult, RetrievalDebugResponse, RetrievalMode, RetrievalResponseItem, UserAccount } from "@helpdesk/shared";
+import type { AuthInfo, ChatMessage, ChatResponse, ChatSession, ChatStreamEvent, Helpdesk, HelpdeskDocument, ImportSuggestion, MessageFeedback, ModelsInfo, PageIndexNode, PredictionModelInfo, PredictionResult, RetrievalDebugResponse, RetrievalMode, RetrievalResponseItem, SimilarQuestion, UserAccount } from "@helpdesk/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -100,6 +100,11 @@ export const apiClient = {
     buffer += decoder.decode();
     emitLine(buffer);
   },
+  // Similar past questions (BM25) for the current helpdesk; returns [] when the toggle is off.
+  getSimilarQuestions: (helpdeskSlug: string, q: string) =>
+    request<{ matches: SimilarQuestion[] }>(
+      `/api/chat/similar?helpdeskSlug=${encodeURIComponent(helpdeskSlug)}&q=${encodeURIComponent(q)}`
+    ),
   setMessageFeedback: (messageId: string, feedback: MessageFeedback | null) =>
     request<{ ok: boolean }>(`/api/chat/messages/${messageId}`, {
       method: "PATCH",
@@ -173,7 +178,7 @@ export const apiClient = {
   // Helpdesks
   listHelpdesks: () =>
     request<{ data: Helpdesk[] }>("/api/helpdesks"),
-  createHelpdesk: (body: { name: string; slug: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[] }) =>
+  createHelpdesk: (body: { name: string; slug: string; description?: string; isPrivate?: boolean; tags?: string[]; topK?: number; systemPrompt?: string; model?: string; retrievalMode?: RetrievalMode; datasetSlug?: string; documentSlugs?: string[]; queryExpansion?: boolean; similarQuestions?: boolean }) =>
     request<{ data: Helpdesk }>("/api/helpdesks", { method: "POST", body: JSON.stringify(body) }),
   getHelpdesk: (slug: string) =>
     request<{ data: Helpdesk }>(`/api/helpdesks/${slug}`),

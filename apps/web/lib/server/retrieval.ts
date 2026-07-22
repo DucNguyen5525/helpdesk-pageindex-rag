@@ -37,6 +37,42 @@ export async function retrievePageIndexNodes(input: RetrievePageIndexInput): Pro
   return scored;
 }
 
+// Like retrievePageIndexNodes but scores each node against the original query AND its
+// expansions (query-expansion.ts), keeping the elementwise max: a node that strongly
+// matches ANY phrasing ranks, without diluting nodes that match none. Fetches nodes once
+// and reuses scoreCandidates per variant. Falls back to the plain path with no expansions.
+export async function retrievePageIndexNodesExpanded(
+  input: RetrievePageIndexInput & { expansions?: string[] }
+): Promise<RetrievedNode[]> {
+  const expansions = (input.expansions ?? []).map((value) => value.trim()).filter(Boolean);
+  if (expansions.length === 0) return retrievePageIndexNodes(input);
+
+  const topK = Math.min(Math.max(input.topK ?? 6, 1), 12);
+  const documents = await listReadyDocuments({ tags: input.tags, slugs: input.documentSlugs });
+  if (documents.length === 0) return [];
+
+  const nodes = await getNodesForDocuments(documents.map((doc) => doc._id));
+  const documentById = new Map(documents.map((doc) => [doc._id.toString(), doc]));
+
+  const maxScores = new Array<number>(nodes.length).fill(0);
+  for (const query of [input.query, ...expansions]) {
+    const scores = scoreCandidates(query, nodes);
+    for (let index = 0; index < nodes.length; index += 1) {
+      if (scores[index] > maxScores[index]) maxScores[index] = scores[index];
+    }
+  }
+
+  return nodes
+    .map((node, index) => ({
+      node,
+      document: documentById.get(node.documentId.toString()),
+      score: maxScores[index]
+    }))
+    .filter((item): item is RetrievedNode => Boolean(item.document) && item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
 export function toSourceReference(item: RetrievedNode): SourceReference {
   return {
     documentId: item.document._id.toString(),
@@ -186,7 +222,7 @@ function countOccurrences(haystack: string, needle: string) {
   return count;
 }
 
-function tokenize(value: string) {
+export function tokenize(value: string) {
   return normalize(value)
     .split(/\s+/)
     .map((term) => term.trim())
@@ -194,7 +230,7 @@ function tokenize(value: string) {
     .slice(0, 16);
 }
 
-function normalize(value: string) {
+export function normalize(value: string) {
   return value
     .toLowerCase()
     .normalize("NFD")

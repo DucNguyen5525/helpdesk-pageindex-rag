@@ -108,6 +108,7 @@ Routes should parse HTTP input and call `apps/web/lib/server/*`; do not put retr
 - Do not reintroduce Dify.
 - Retrieval should use PageIndex hierarchical fields: `title`, `summary`, `content`, `path`, pages, source refs, and tags.
 - Gemini receives only retrieved PageIndex context.
+- LLM-based query expansion (generating alternative phrasings, then lexical retrieval over the union) is allowed — it stays token-based, no embeddings. See `query-expansion.ts` + `retrievePageIndexNodesExpanded`.
 
 ---
 
